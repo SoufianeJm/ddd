@@ -1,0 +1,1479 @@
+from django.shortcuts import render, redirect, get_object_or_404
+from django.views.generic.edit import CreateView, UpdateView, DeleteView
+from django.urls import reverse_lazy, reverse
+from .models import Resource, Mission
+from .forms import ResourceForm, MissionForm, SLRFileUploadForm
+import pandas as pd
+import numpy as np
+import re
+from io import BytesIO
+from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
+from datetime import datetime
+from django.contrib import messages
+import os
+import traceback
+from django.db import models
+import json
+from django.core.serializers.json import DjangoJSONEncoder
+import uuid
+from pathlib import Path
+from django.conf import settings
+from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from .utils_ibm import find_ibm_columns, ColumnNotFound
+
+# Define temporary storage path for SLR runs
+TEMP_FILES_BASE_DIR = Path(settings.MEDIA_ROOT) / 'slr_temp_runs'
+TEMP_FILES_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Create your views here.
+
+
+def dashboard1(request):
+    """
+    New Dashboard 1 - Clean and simple dashboard
+    """
+    import json
+    from pathlib import Path
+    from django.conf import settings
+    import pandas as pd
+
+    def get_latest_parquet(run_dir, base):
+        updated = run_dir / f'{base}_updated.parquet'
+        initial = run_dir / f'{base}_initial.parquet'
+        return updated if updated.exists() else initial
+
+    last_slr_run_id = request.session.get('last_slr_run_id')
+    print(f"DEBUG: Retrieved last_slr_run_id from session: {last_slr_run_id}")
+    
+    # FALLBACK: If no session run_id, try to find the most recent run
+    if not last_slr_run_id:
+        try:
+            import os
+            runs_dir = Path(settings.MEDIA_ROOT) / 'slr_temp_runs'
+            if runs_dir.exists():
+                # Get all run directories and find the most recent one
+                run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
+                if run_dirs:
+                    # Sort by modification time, most recent first
+                    most_recent_run = max(run_dirs, key=lambda x: x.stat().st_mtime)
+                    last_slr_run_id = most_recent_run.name
+                    print(f"DEBUG: No session run_id found, using most recent run: {last_slr_run_id}")
+                    # Save it to session for future use
+                    request.session['last_slr_run_id'] = last_slr_run_id
+        except Exception as e:
+            print(f"DEBUG: Error finding fallback run_id: {e}")
+    
+    data_available = False
+    libelle_projets_list = []
+    overall_kpis = {}
+    projects_data_for_js = {}
+
+    if last_slr_run_id:
+        run_dir = Path(settings.MEDIA_ROOT) / 'slr_temp_runs' / last_slr_run_id
+        print(f"DEBUG: Constructed run_dir: {run_dir}")
+        try:
+            result_path = get_latest_parquet(run_dir, 'result')
+            employee_summary_path = get_latest_parquet(run_dir, 'employee_summary')
+            adjusted_path = get_latest_parquet(run_dir, 'adjusted')
+            global_summary_path = get_latest_parquet(run_dir, 'global_summary')
+            
+            result_df = pd.read_parquet(result_path)
+            employee_summary_df = pd.read_parquet(employee_summary_path)
+            adjusted_df = pd.read_parquet(adjusted_path)
+            global_summary_df = pd.read_parquet(global_summary_path)
+            data_available = True
+            
+            # Prepare project list
+            libelle_projets_list = sorted(list(result_df['Libelle projet'].unique()))
+            
+            # Calculate overall KPIs
+            nb_employes_overall = employee_summary_df['Nom'].nunique()
+            total_budget_estime_overall = result_df['Estimees'].sum()
+            total_adjusted_cost_overall = result_df['Adjusted Cost'].sum()
+            total_ecart_overall = result_df['Ecart'].sum()
+            pct_ajustement_overall = (total_ecart_overall / total_budget_estime_overall) * 100 if total_budget_estime_overall else 0
+            
+            # Calculate the 5 business-critical KPIs
+            # 1. Écart Final Projet (vs Estimé) - already calculated as total_ecart_overall
+            ecart_final_projet = total_ecart_overall
+            
+            # 2. Coût DES Projet - from global_summary_df
+            total_des_cost = global_summary_df['Total DES'].sum() if 'Total DES' in global_summary_df.columns else 0
+            
+            # 3. Marge DES (Budget - Coût DES)
+            marge_des = total_budget_estime_overall - total_des_cost
+            
+            # 4. Taux de Dépassement (%) - (Budget - Final Cost) / Budget * 100
+            taux_depassement = ((total_budget_estime_overall - total_adjusted_cost_overall) / total_budget_estime_overall * 100) if total_budget_estime_overall else 0
+            
+            # 5. Nombre de Projets Déficitaires - projects where budget < final cost (negative ecart)
+            projets_deficitaires = len(result_df[result_df['Ecart'] < 0])
+            
+            # 6. Budget Total des Missions - somme de tous les budgets des missions créées dans le système
+            from .models import Mission
+            missions_qs = Mission.objects.filter(
+                calculated_estimee__isnull=False,
+                calculated_estimee__gt=0
+            )
+            total_budget_missions = sum(mission.calculated_estimee for mission in missions_qs) if missions_qs.exists() else 0
+            
+            # Si pas de budgets calculés dans les missions, on utilise le budget estimé total comme fallback
+            if total_budget_missions == 0:
+                total_budget_missions = total_budget_estime_overall
+            
+            overall_kpis = {
+                'nbEmployes': nb_employes_overall,
+                'totalBudgetEstime': total_budget_estime_overall,
+                'totalAdjustedCost': total_adjusted_cost_overall,
+                'totalEcart': total_ecart_overall,
+                'pctAjustement': pct_ajustement_overall,
+                # New business KPIs
+                'ecartFinalProjet': ecart_final_projet,
+                'coutDesProjet': total_des_cost,
+                'margeDes': marge_des,
+                'tauxDepassement': taux_depassement,
+                'projetsDeficitaires': projets_deficitaires,
+                'totalBudgetMissions': total_budget_missions
+            }
+            
+            # Prepare per-project data for chart
+            projects_data = {}
+            for projet_name in libelle_projets_list:
+                project_result_data = result_df[result_df['Libelle projet'] == projet_name].iloc[0]
+                project_employee_data = employee_summary_df[employee_summary_df['Libelle projet'] == projet_name]
+                
+                nb_employes_project = project_employee_data['Nom'].nunique()
+                budget_estime_project = project_result_data['Estimees']
+                adjusted_cost_project = project_result_data['Adjusted Cost']
+                ecart_project = project_result_data['Ecart']
+                pct_ajustement_project = (ecart_project / budget_estime_project) * 100 if budget_estime_project else 0
+                
+                heures_reelles = float(project_result_data.get('Total Heures', 0.0))
+                heures_ajustees = float(project_result_data.get('Adjusted Hours', 0.0))
+                
+                # Extract raw Total cost from global_summary_df
+                total_raw_cost = float(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total'].values[0] if not global_summary_df.empty and len(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total'].values) > 0 else 0)
+                
+                # Extract Total Des and Total IBM from global_summary_df
+                total_des_cost = float(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total DES'].values[0] if not global_summary_df.empty and len(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total DES'].values) > 0 else 0)
+                
+                # Get IBM cost - assuming 'Total' is IBM cost or calculate from rate
+                total_ibm_cost = total_raw_cost  # For now, using Total as IBM cost
+                
+                projects_data[projet_name] = {
+                    'kpis': {
+                        'nbEmployes': nb_employes_project,
+                        'totalBudgetEstime': budget_estime_project,
+                        'totalAdjustedCost': adjusted_cost_project,
+                        'totalEcart': ecart_project,
+                        'pctAjustement': pct_ajustement_project,
+                        'heuresReelles': heures_reelles,
+                        'heuresAjustees': heures_ajustees,
+                        'totalRawCost': total_raw_cost,
+                        'totalDesCost': total_des_cost,
+                        'totalIbmCost': total_ibm_cost,
+                    }
+                }
+            
+            # Prepare project summary table data (same as old dashboard)
+            table_projets = []
+            for projet_name in libelle_projets_list:
+                project_result_data = result_df[result_df['Libelle projet'] == projet_name].iloc[0]
+                # Handle NaN values by converting them to 0 using pandas-aware function
+                def safe_float(value, default=0.0):
+                    if pd.isna(value):
+                        return default
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return default
+                        
+                table_projets.append({
+                    "Libelle_projet": projet_name,
+                    "Total_Heures": safe_float(project_result_data.get('Total Heures', 0.0)),
+                    "Adjusted_Hours": safe_float(project_result_data.get('Adjusted Hours', 0.0)),
+                    "Adjusted_Cost": safe_float(project_result_data.get('Adjusted Cost', 0.0)),
+                    "Heures_Retirees": safe_float(project_result_data.get('Heures Retirées', 0.0)),
+                    "Estimees": safe_float(project_result_data.get('Estimees', 0.0)),
+                    "Ecart": safe_float(project_result_data.get('Ecart', 0.0)),
+                })
+                
+        except Exception as e:
+            print(f"ERROR: Failed to load dashboard data: {e}")
+            data_available = False
+            table_projets = []
+
+    # Add URL-building logic from DashboardRessourceView
+    last_slr_run_id = request.session.get('last_slr_run_id')
+    download_url = adjust_url = None
+    if last_slr_run_id:
+        download_url = reverse('download_slr_report', args=[last_slr_run_id, 'latest_run.xlsx'])
+        adjust_url = reverse('edit_slr_adjustments', args=[last_slr_run_id])
+    
+    context = {
+        'data_available': data_available,
+        'libelle_projets_list': libelle_projets_list,
+        'overall_kpis': to_python_type(overall_kpis),
+        'projects_data_json_from_view': json.dumps(to_python_type(projects_data)) if data_available else '{}',
+        'table_projets': table_projets if data_available else [],
+        'last_slr_run_id': last_slr_run_id,
+        'download_url': download_url,
+        'adjust_url': adjust_url,
+    }
+    
+    return render(request, 'billing/dashboard1.html', context)
+
+
+def home(request):
+    import json
+    from pathlib import Path
+    from django.conf import settings
+    import pandas as pd
+
+    def get_latest_parquet(run_dir, base):
+        updated = run_dir / f'{base}_updated.parquet'
+        initial = run_dir / f'{base}_initial.parquet'
+        return updated if updated.exists() else initial
+
+    last_slr_run_id = request.session.get('last_slr_run_id')
+    print(f"DEBUG: Retrieved last_slr_run_id from session: {last_slr_run_id}")
+    
+    # FALLBACK: If no session run_id, try to find the most recent run
+    if not last_slr_run_id:
+        try:
+            import os
+            runs_dir = Path(settings.MEDIA_ROOT) / 'slr_temp_runs'
+            if runs_dir.exists():
+                # Get all run directories and find the most recent one
+                run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
+                if run_dirs:
+                    # Sort by modification time, most recent first
+                    most_recent_run = max(run_dirs, key=lambda x: x.stat().st_mtime)
+                    last_slr_run_id = most_recent_run.name
+                    print(f"DEBUG: No session run_id found, using most recent run: {last_slr_run_id}")
+                    # Save it to session for future use
+                    request.session['last_slr_run_id'] = last_slr_run_id
+        except Exception as e:
+            print(f"DEBUG: Error finding fallback run_id: {e}")
+    
+    data_available = False
+    libelle_projets_list = []
+    overall_kpis = {}
+    projects_data_for_js = {}
+
+    if last_slr_run_id:
+        run_dir = Path(settings.MEDIA_ROOT) / 'slr_temp_runs' / last_slr_run_id
+        print(f"DEBUG: Constructed run_dir: {run_dir}")
+        try:
+            result_path = get_latest_parquet(run_dir, 'result')
+            employee_summary_path = get_latest_parquet(run_dir, 'employee_summary')
+            adjusted_path = get_latest_parquet(run_dir, 'adjusted')
+            global_summary_path = get_latest_parquet(run_dir, 'global_summary')
+            print(f"DEBUG: Using result file: {result_path}")
+            print(f"DEBUG: Using employee_summary file: {employee_summary_path}")
+            print(f"DEBUG: Using adjusted file: {adjusted_path}")
+            print(f"DEBUG: Using global_summary file: {global_summary_path}")
+            result_df = pd.read_parquet(result_path)
+            print(f"DEBUG: Loaded result_df, shape: {result_df.shape}")
+            employee_summary_df = pd.read_parquet(employee_summary_path)
+            print(f"DEBUG: Loaded employee_summary_df, shape: {employee_summary_df.shape}")
+            adjusted_df = pd.read_parquet(adjusted_path)
+            print(f"DEBUG: Loaded adjusted_df, shape: {adjusted_df.shape}")
+            global_summary_df = pd.read_parquet(global_summary_path)
+            print(f"DEBUG: Loaded global_summary_df, shape: {global_summary_df.shape}")
+            data_available = True
+        except Exception as e:
+            print(f"ERROR: Failed to load one or more Parquet files: {e}")
+            data_available = False
+
+    if data_available:
+        # DEBUG: Print DataFrame info
+        print("DEBUG: result_df columns:", result_df.columns.tolist())
+        print("DEBUG: result_df head:")
+        print(result_df.head())
+        print("DEBUG: employee_summary_df columns:", employee_summary_df.columns.tolist())
+        print("DEBUG: employee_summary_df head:")
+        print(employee_summary_df.head())
+        print("DEBUG: adjusted_df columns:", adjusted_df.columns.tolist())
+        print("DEBUG: adjusted_df head:")
+        print(adjusted_df.head())
+        
+        # Prepare project list
+        libelle_projets_list = sorted(list(result_df['Libelle projet'].unique()))
+        print(f"DEBUG: Found {len(libelle_projets_list)} projects: {libelle_projets_list}")
+        
+        # 1. Calculate overall KPIs
+        nb_employes_overall = employee_summary_df['Nom'].nunique()
+        total_budget_estime_overall = result_df['Estimees'].sum()
+        total_adjusted_cost_overall = result_df['Adjusted Cost'].sum()
+        total_ecart_overall = result_df['Ecart'].sum()
+        pct_ajustement_overall = (total_ecart_overall / total_budget_estime_overall) * 100 if total_budget_estime_overall else 0
+        
+        print(f"DEBUG: Overall KPIs calculated:")
+        print(f"  - nb_employes_overall: {nb_employes_overall}")
+        print(f"  - total_budget_estime_overall: {total_budget_estime_overall}")
+        print(f"  - total_adjusted_cost_overall: {total_adjusted_cost_overall}")
+        print(f"  - total_ecart_overall: {total_ecart_overall}")
+        print(f"  - pct_ajustement_overall: {pct_ajustement_overall}")
+        
+        overall_kpis = {
+            'nbEmployes': nb_employes_overall,
+            'totalBudgetEstime': total_budget_estime_overall,
+            'totalAdjustedCost': total_adjusted_cost_overall,
+            'totalEcart': total_ecart_overall,
+            'pctAjustement': pct_ajustement_overall
+        }
+        # 2. Prepare per-project KPIs and chart data
+        projects_data = {}
+        for projet_name in libelle_projets_list:
+            print(f"DEBUG: Processing project: {projet_name}")
+            
+            # Get project data from result_df
+            project_result_mask = result_df['Libelle projet'] == projet_name
+            project_result_data = result_df[project_result_mask]
+            print(f"DEBUG: Found {len(project_result_data)} rows for project {projet_name} in result_df")
+            
+            if len(project_result_data) == 0:
+                print(f"WARNING: No result data found for project {projet_name}")
+                continue
+                
+            project_result_data = project_result_data.iloc[0]
+            print(f"DEBUG: Project result data for {projet_name}:")
+            print(f"  - Columns available: {project_result_data.index.tolist()}")
+            print(f"  - Total Heures: {project_result_data.get('Total Heures', 'NOT_FOUND')}")
+            print(f"  - Adjusted Hours: {project_result_data.get('Adjusted Hours', 'NOT_FOUND')}")
+            print(f"  - Adjusted Cost: {project_result_data.get('Adjusted Cost', 'NOT_FOUND')}")
+            print(f"  - Estimees: {project_result_data.get('Estimees', 'NOT_FOUND')}")
+            print(f"  - Ecart: {project_result_data.get('Ecart', 'NOT_FOUND')}")
+            
+            # Get employee data
+            project_employee_data = employee_summary_df[employee_summary_df['Libelle projet'] == projet_name]
+            print(f"DEBUG: Found {len(project_employee_data)} employees for project {projet_name}")
+            
+            nb_employes_project = project_employee_data['Nom'].nunique()
+            budget_estime_project = project_result_data['Estimees']
+            adjusted_cost_project = project_result_data['Adjusted Cost']
+            ecart_project = project_result_data['Ecart']
+            pct_ajustement_project = (ecart_project / budget_estime_project) * 100 if budget_estime_project else 0
+            
+            # Extract hours data with better debugging
+            heures_reelles = float(project_result_data.get('Total Heures', 0.0))
+            heures_ajustees = float(project_result_data.get('Adjusted Hours', 0.0))
+            
+            # Extract raw Total cost from global_summary_df
+            total_raw_cost = float(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total'].values[0] if not global_summary_df.empty and len(global_summary_df.loc[global_summary_df['Libelle projet'] == projet_name, 'Total'].values) > 0 else 0)
+            
+            print(f"DEBUG: Calculated values for {projet_name}:")
+            print(f"  - nb_employes_project: {nb_employes_project}")
+            print(f"  - budget_estime_project: {budget_estime_project}")
+            print(f"  - adjusted_cost_project: {adjusted_cost_project}")
+            print(f"  - ecart_project: {ecart_project}")
+            print(f"  - pct_ajustement_project: {pct_ajustement_project}")
+            print(f"  - heures_reelles: {heures_reelles}")
+            print(f"  - heures_ajustees: {heures_ajustees}")
+            print(f"  - total_raw_cost: {total_raw_cost}")
+            
+            # Get employee detailed data from adjusted_df
+            project_adjusted_data = adjusted_df[adjusted_df['Libelle projet'] == projet_name]
+            print(f"DEBUG: Found {len(project_adjusted_data)} adjusted rows for project {projet_name}")
+            
+            if len(project_adjusted_data) > 0:
+                print(f"DEBUG: Adjusted data columns: {project_adjusted_data.columns.tolist()}")
+                print(f"DEBUG: Sample adjusted data:")
+                print(project_adjusted_data[['Nom', 'Total Heures', 'Adjusted Hours', 'Adjusted Cost']].head())
+            
+            projects_data[projet_name] = {
+                'kpis': {
+                    'nbEmployes': nb_employes_project,
+                    'totalBudgetEstime': budget_estime_project,
+                    'totalAdjustedCost': adjusted_cost_project,
+                    'totalEcart': ecart_project,
+                    'pctAjustement': pct_ajustement_project,
+                    'heuresReelles': heures_reelles,
+                    'heuresAjustees': heures_ajustees,
+                    'totalRawCost': total_raw_cost,
+                },
+                'chart1_data': {
+                    'budgetEstime': budget_estime_project,
+                    'adjustedCost': adjusted_cost_project
+                },
+                'chart2_data': {
+                    'budgetEstime': budget_estime_project,
+                    'ecart': ecart_project
+                },
+                'employee_data': [
+                    {
+                        'Nom': row['Nom'],
+                        'heuresReelles': float(row.get('Total Heures', 0.0)),
+                        'heuresAjustees': float(row.get('Adjusted Hours', 0.0)),
+                        'Total': float(row.get('Total', 0.0)),
+                        'Adjusted_Cost': float(row.get('Adjusted Cost', 0.0))
+                    }
+                    for _, row in project_adjusted_data.iterrows()
+                ]
+            }
+        # Préparation du tableau synthétique pour tous les projets
+        table_projets = []
+        for projet_name in libelle_projets_list:
+            project_result_data = result_df[result_df['Libelle projet'] == projet_name].iloc[0]
+            # Handle NaN values by converting them to 0 using pandas-aware function
+            def safe_float(value, default=0.0):
+                if pd.isna(value):
+                    return default
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return default
+                    
+            table_projets.append({
+                "Libelle projet": projet_name,
+                "Total Heures": safe_float(project_result_data.get('Total Heures', 0.0)),
+                "Adjusted Hours": safe_float(project_result_data.get('Adjusted Hours', 0.0)),
+                "Adjusted Cost": safe_float(project_result_data.get('Adjusted Cost', 0.0)),
+                "Heures Retirées": safe_float(project_result_data.get('Heures Retirées', 0.0)),
+                "Estimees": safe_float(project_result_data.get('Estimees', 0.0)),
+                "Ecart": safe_float(project_result_data.get('Ecart', 0.0)),
+            })
+        context = {
+            'data_available': data_available,
+            'libelle_projets_list': libelle_projets_list,
+            'overall_kpis': to_python_type(overall_kpis),
+            'projects_data_json_from_view': json.dumps(to_python_type(projects_data)),
+            'projects_data_json': to_python_type(projects_data),
+            'table_projets': table_projets,
+        }
+        print("DEBUG: table_projets:", table_projets)
+        print(f"DEBUG: Context for home.html: data_available={context.get('data_available')}")
+        print(f"DEBUG: Context projects_data_json_from_view: {context.get('projects_data_json_from_view')[:200]}...")
+        print("DEBUG: projects_data (full):", projects_data)
+        return render(request, 'billing/home.html', context)
+    
+    # Return response when no data is available
+    context = {
+        'data_available': False,
+        'libelle_projets_list': [],
+        'overall_kpis': {},
+        'projects_data_json': '{}'
+    }
+    return render(request, 'billing/home.html', context)
+
+
+def resource_list_view(request):
+    search_query = request.GET.get('search', '')
+    resources = Resource.objects.all()
+    
+    # Bulk delete logic
+    if request.method == 'POST' and 'selected_resources' in request.POST:
+        selected_ids = request.POST.getlist('selected_resources')
+        if selected_ids:
+            Resource.objects.filter(pk__in=selected_ids).delete()
+            messages.success(request, f"Successfully deleted {len(selected_ids)} resource(s).")
+            return redirect('resource_list')
+
+    if search_query:
+        resources = resources.filter(
+            models.Q(full_name__icontains=search_query) |
+            models.Q(matricule__icontains=search_query) |
+            models.Q(grade__icontains=search_query) |
+            models.Q(grade_des__icontains=search_query)
+        )
+    # Annotate display values for grade and grade_des
+    resource_list = []
+    for r in resources:
+        resource_list.append({
+            'pk': r.pk,
+            'picture': r.picture,
+            'full_name': r.full_name,
+            'matricule': r.matricule,
+            'grade': r.get_grade_display(),
+            'grade_des': r.get_grade_des_display(),
+            'rate_ibm': r.rate_ibm,
+            'rate_des': r.rate_des,
+        })
+    context = {
+        'resources': resource_list,
+        'page_title': 'Resources',
+        'search_query': search_query
+    }
+    return render(request, 'billing/resource_list.html', context)
+
+
+def mission_list_view(request):
+    search_query = request.GET.get('search', '')
+    missions = Mission.objects.all()
+    
+    if search_query:
+        missions = missions.filter(
+            models.Q(otp_l2__icontains=search_query) |
+            models.Q(belgian_name__icontains=search_query) |
+            models.Q(libelle_de_projet__icontains=search_query) |
+            models.Q(code_type__icontains=search_query)
+        )
+    
+    context = {
+        'missions': missions,
+        'page_title': 'Missions',
+        'search_query': search_query
+    }
+    return render(request, 'billing/mission_list.html', context)
+
+
+def resource_create(request):
+    if request.method == 'POST':
+        form = ResourceForm(request.POST, request.FILES)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Resource added successfully!')
+            return redirect('resource_list')
+    else:
+        form = ResourceForm()
+    return render(request, 'billing/resource_form.html', {'form': form, 'action': 'Create'})
+
+
+def resource_update(request, pk):
+    resource = get_object_or_404(Resource, pk=pk)
+    if request.method == 'POST':
+        form = ResourceForm(request.POST, request.FILES, instance=resource)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Resource updated successfully!')
+            return redirect('resource_list')
+    else:
+        form = ResourceForm(instance=resource)
+    return render(request, 'billing/resource_form.html', {'form': form, 'action': 'Update'})
+
+
+def resource_delete(request, pk):
+    resource = get_object_or_404(Resource, pk=pk)
+    if request.method == 'POST':
+        resource.delete()
+        messages.success(request, 'Resource deleted successfully!')
+        return redirect('resource_list')
+    return render(request, 'billing/resource_confirm_delete.html', {'resource': resource})
+
+
+def mission_create(request):
+    if request.method == 'POST':
+        form = MissionForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Mission added successfully!')
+            return redirect('mission_list')
+    else:
+        form = MissionForm()
+    return render(request, 'billing/mission_form.html', {'form': form, 'action': 'Create'})
+
+
+def mission_update(request, pk):
+    mission = get_object_or_404(Mission, pk=pk)
+    if request.method == 'POST':
+        form = MissionForm(request.POST, instance=mission)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Mission updated successfully!')
+            return redirect('mission_list')
+    else:
+        form = MissionForm(instance=mission)
+    return render(request, 'billing/mission_form.html', {'form': form, 'action': 'Update'})
+
+
+def mission_delete(request, pk):
+    mission = get_object_or_404(Mission, pk=pk)
+    if request.method == 'POST':
+        mission.delete()
+        messages.success(request, 'Mission deleted successfully!')
+        return redirect('mission_list')
+    return render(request, 'billing/mission_confirm_delete.html', {'mission': mission})
+
+
+
+def find_otp_l2_column(df):
+    def normalize(col):
+        return re.sub(r'[\s\u00A0]+', '', str(col)).lower()
+    for col in df.columns:
+        if normalize(col) == 'otpl2':
+            return col
+    return None
+
+
+def facturation_slr(request):
+    processing_logs = []
+    form = SLRFileUploadForm()
+
+    if request.method == 'POST':
+        processing_logs.append(f"DEBUG: POST request received. POST data: {request.POST}")
+        
+        form = SLRFileUploadForm(request.POST, request.FILES)
+        
+        # Debug: log all files in request.FILES
+        processing_logs.append('FILES received: ' + ', '.join(f'{k}: {v.name}' for k, v in request.FILES.items()))
+
+        heures_ibm_file_obj = request.FILES.get('heures_ibm_file')
+        mafe_file_obj = request.FILES.get('mafe_report_file')
+
+        # Log file upload status
+        if heures_ibm_file_obj:
+            processing_logs.append("INFO: Heures IBM file uploaded: {}".format(heures_ibm_file_obj.name))
+        else:
+            processing_logs.append("ERROR: No Heures IBM file uploaded.")
+        if mafe_file_obj:
+            processing_logs.append("INFO: MAFE report file uploaded: {}".format(mafe_file_obj.name))
+        else:
+            processing_logs.append("ERROR: No MAFE report file uploaded.")
+
+        # Check if both files are present
+        if not (heures_ibm_file_obj and mafe_file_obj):
+            processing_logs.append("ERROR: Both Heures IBM and MAFE report files are required.")
+            context = {
+                'form': form,
+                'processing_logs': processing_logs,
+                'page_title': 'Facturation SLR',
+            }
+            return render(request, 'billing/facturation_slr.html', context)
+
+        try:
+            # Generate a unique run ID
+            run_id = str(uuid.uuid4())
+            run_dir = TEMP_FILES_BASE_DIR / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            processing_logs.append(f"DEBUG: Created temporary directory for run_id {run_id} at {run_dir}")
+
+            # Process Heures IBM file with dynamic column detection
+            heures_ibm_file_obj.seek(0)
+            
+            # First, use openpyxl to find column positions dynamically
+            try:
+                from openpyxl import load_workbook
+                from billing.utils_ibm import validate_required_columns
+                
+                workbook = load_workbook(heures_ibm_file_obj, read_only=True)
+                
+                # Validate required columns first
+                is_valid, missing_columns, found_columns = validate_required_columns(workbook, 'base')
+                
+                if not is_valid:
+                    # Return HTTP 400 with explicit message about missing columns
+                    error_message = f"Required columns are missing from the uploaded file: {', '.join(missing_columns)}. Please ensure your Excel file contains all required columns: Code projet, Nom, Grade, Date de travail, Heures."
+                    processing_logs.append(f"ERROR: {error_message}")
+                    context = {
+                        'form': form,
+                        'processing_logs': processing_logs,
+                        'page_title': 'Facturation SLR',
+                        'error_message': error_message
+                    }
+                    return HttpResponseBadRequest(render(request, 'billing/facturation_slr.html', context).content)
+                
+                cols = find_ibm_columns(workbook, 'base')
+                processing_logs.append(f"INFO: Dynamic column mapping found: {cols}")
+                
+                # Convert column indices to Excel column letters for pandas
+                from openpyxl.utils import get_column_letter
+                usecols_list = [get_column_letter(cols[key]) for key in ['Code projet', 'Nom', 'Grade', 'Date de travail', 'Heures']]
+                usecols_str = ','.join(usecols_list)
+            except ColumnNotFound as e:
+                # Return HTTP 400 with explicit message about missing columns
+                error_message = f"Column validation failed: {str(e)}. Please ensure your Excel file contains all required columns."
+                processing_logs.append(f"ERROR: {error_message}")
+                context = {
+                    'form': form,
+                    'processing_logs': processing_logs,
+                    'page_title': 'Facturation SLR',
+                    'error_message': error_message
+                }
+                return HttpResponseBadRequest(render(request, 'billing/facturation_slr.html', context).content)
+            except Exception as e:
+                processing_logs.append(f"WARNING: Column detection failed ({str(e)}), falling back to hardcoded columns E,H,I,M,N")
+                usecols_str = "E,H,I,M,N"
+                cols = {'Code projet': 5, 'Nom': 8, 'Grade': 9, 'Date de travail': 13, 'Heures': 14}  # E=5, H=8, I=9, M=13, N=14
+            
+            # Now read with pandas using the detected columns
+            heures_ibm_file_obj.seek(0)
+            base_df = pd.read_excel(heures_ibm_file_obj, sheet_name='base', usecols=usecols_str)
+            
+            # Set canonical column names in the specified order
+            canonical_order = ['Code projet', 'Nom', 'Grade', 'Date', 'Heures']
+            if 'Date de travail' in cols:
+                # Map 'Date de travail' to 'Date' for consistency
+                base_df.columns = [canonical_order[i] if canonical_order[i] != 'Date' else 'Date' for i in range(len(canonical_order))]
+            else:
+                base_df.columns = canonical_order
+            
+            processing_logs.append(f"INFO: Heures IBM file parsed with dynamic columns. base_df shape: {base_df.shape}")
+
+            # --- FILTER base_df BY MONTH/YEAR FROM FILENAME ---
+            # Extract month and year from filename
+            mois_mapping = {
+                'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4, 'mai': 5, 'juin': 6,
+                'juillet': 7, 'août': 8, 'aout': 8, 'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12,
+                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+            }
+            match = re.search(r'(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[^\d]*(\d{2,4})', heures_ibm_file_obj.name, re.IGNORECASE)
+            mois_num = None
+            annee_num = None
+            if match:
+                mois_str = match.group(1).lower()
+                mois_num = mois_mapping.get(mois_str)
+                annee_str = match.group(2)
+                annee_num = int(annee_str)
+                if annee_num < 100:
+                    current_century = (datetime.now().year // 100) * 100
+                    annee_num = current_century + annee_num
+                # Parse Date column and filter
+                base_df['Date'] = pd.to_datetime(base_df['Date'], errors='coerce', dayfirst=True)
+                base_df = base_df.dropna(subset=['Date'])
+                base_df = base_df[(base_df['Date'].dt.month == mois_num) & (base_df['Date'].dt.year == annee_num)]
+                processing_logs.append(f"INFO: base_df filtered by month={mois_num}, year={annee_num}. Shape: {base_df.shape}")
+            else:
+                processing_logs.append("WARNING: Could not extract month/year from filename. No filtering applied.")
+
+            # Process MAFE report file
+            mafe_file_obj.seek(0)
+            mafe_raw = pd.read_excel(mafe_file_obj, sheet_name='(Tab A) FULLY COMMITTED', header=None)
+            mafe_raw.columns = mafe_raw.iloc[14].astype(str).str.strip().str.replace('\n', ' ').str.replace('\r', ' ')
+            mafe_df = mafe_raw.drop(index=list(range(0, 15))).reset_index(drop=True)
+            processing_logs.append(f"INFO: MAFE report file parsed. mafe_df shape: {mafe_df.shape}")
+
+            # --- MATCH main.py LOGIC ---
+            processing_logs.append("DEBUG: Starting calculations...")
+            
+            # 1. Prepare base_df (Heures IBM) - already loaded
+            # 2. Prepare codes_df from Mission model
+            codes_qs = Mission.objects.all().values('otp_l2', 'libelle_de_projet')
+            codes_df = pd.DataFrame(list(codes_qs))
+            codes_df = codes_df.rename(columns={'otp_l2': 'Code projet', 'libelle_de_projet': 'Libelle projet'})
+            codes_df['Libelle projet'] = codes_df['Libelle projet'].fillna('Code France')
+            base_df = base_df.merge(codes_df[['Code projet', 'Libelle projet']], on='Code projet', how='left')
+            processing_logs.append("DEBUG: Codes merged with base_df")
+
+            # 3. Prepare consultants_df from Resource model
+            consultants_qs = Resource.objects.all().values('full_name', 'rate_ibm', 'rate_des', 'grade')
+            consultants_df = pd.DataFrame(list(consultants_qs))
+            consultants_df = consultants_df.rename(columns={'full_name': 'Nom', 'rate_ibm': 'Rate', 'rate_des': 'Rate DES', 'grade': 'Grade'})
+            base_df['Nom'] = base_df['Nom'].astype(str).str.lower().str.strip()
+            consultants_df['Nom'] = consultants_df['Nom'].astype(str).str.lower().str.strip()
+            base_df['Heures'] = pd.to_numeric(base_df['Heures'], errors='coerce').fillna(0)
+            consultants_df['Rate'] = pd.to_numeric(consultants_df['Rate'], errors='coerce').fillna(0)
+            consultants_df['Rate DES'] = pd.to_numeric(consultants_df['Rate DES'], errors='coerce').fillna(0)
+            processing_logs.append("DEBUG: Consultants data prepared")
+
+            # 4. Prepare MAFE file - match main.py logic
+            mois_mapping = {
+                'Janvier': 'Jan', 'Février': 'Feb', 'Mars': 'Mar', 'Avril': 'Apr', 'Mai': 'May', 'Juin': 'Jun',
+                'Juillet': 'Jul', 'Août': 'Aug', 'Septembre': 'Sep', 'Octobre': 'Oct', 'Novembre': 'Nov', 'Décembre': 'Dec',
+                'Jan': 'Jan', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Apr', 'May': 'May', 'Jun': 'Jun',
+                'Jul': 'Jul', 'Aug': 'Aug', 'Sep': 'Sep', 'Oct': 'Oct', 'Nov': 'Nov', 'Dec': 'Dec'
+            }
+            match = re.search(r'(Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\d]*(\d{2,4})', heures_ibm_file_obj.name)
+            mois = mois_mapping.get(match.group(1), match.group(1)) if match else ''
+            annee = match.group(2) if match else ''
+            processing_logs.append(f"DEBUG: Month and year extracted: {mois} {annee}")
+
+            # Find forecast column in MAFE
+            forecast_col_cleaned = next((col for col in mafe_df.columns if mois in col and 'Forecasts' in col and annee[-2:] in col), None)
+            if forecast_col_cleaned:
+                mafe_subset = mafe_df[['Country', 'Customer Name', forecast_col_cleaned]].rename(columns={forecast_col_cleaned: 'Estimees'})
+                # Get Belgian Name mapping from Mission model
+                belgian_names = Mission.objects.values('belgian_name', 'libelle_de_projet')
+                belgian_names_df = pd.DataFrame(list(belgian_names))
+                if not belgian_names_df.empty:
+                    belgian_names_df = belgian_names_df.rename(columns={'belgian_name': 'Customer Name', 'libelle_de_projet': 'Libelle projet'})
+                    mafe_subset = mafe_subset.merge(belgian_names_df, on='Customer Name', how='left')
+                mafe_subset['Libelle projet'] = mafe_subset['Libelle projet'].fillna(mafe_subset['Customer Name'])
+            else:
+                mafe_subset = pd.DataFrame(columns=["Country", "Customer Name", "Libelle projet", "Estimees"])
+            processing_logs.append("DEBUG: MAFE data prepared with forecast column")
+
+            # 6. Employee summary
+            processing_logs.append("DEBUG: Starting employee summary calculations")
+            employee_summary = (
+                base_df.groupby(['Libelle projet', 'Nom', 'Grade'], as_index=False)
+                .agg({'Heures': 'sum'})
+                .rename(columns={'Heures': 'Total Heures'})
+                .merge(consultants_df[['Nom', 'Rate']], on='Nom', how='left')
+                .merge(consultants_df[['Nom', 'Rate DES']], on='Nom', how='left')
+            )
+            employee_summary['Total'] = employee_summary['Rate'] * employee_summary['Total Heures']
+            employee_summary['Total DES'] = employee_summary['Rate DES'] * employee_summary['Total Heures']
+            processing_logs.append("DEBUG: Employee summary calculated")
+
+            summary_by_proj = employee_summary.groupby('Libelle projet', as_index=False).agg({'Total Heures': 'sum', 'Total': 'sum', 'Total DES': 'sum'})
+            global_summary = pd.merge(mafe_subset[['Libelle projet', 'Estimees']].drop_duplicates(), summary_by_proj, on='Libelle projet', how='left')
+            global_summary[['Total Heures', 'Total', 'Total DES']] = global_summary[['Total Heures', 'Total', 'Total DES']].fillna(0)
+            global_summary['Estimees'] = pd.to_numeric(global_summary['Estimees'].astype(str).str.strip().replace(['', '-', 'nan', 'None'], '0'), errors='coerce').fillna(0)
+            processing_logs.append("DEBUG: Global summary calculated")
+
+            adjusted = employee_summary.merge(global_summary[['Libelle projet', 'Estimees']], on='Libelle projet', how='left')
+            adjusted['Total_Projet_Cout'] = adjusted.groupby('Libelle projet')['Total'].transform('sum')
+            
+            # Robust calculation of coeff_total using np.where to handle zero denominators
+            adjusted['coeff_total'] = np.where(
+                adjusted['Total_Projet_Cout'] > 0,
+                adjusted['Estimees'] / adjusted['Total_Projet_Cout'],
+                0
+            )
+            
+            adjusted['total_rate_proj'] = adjusted.groupby('Libelle projet')['Rate'].transform('sum')
+            
+            # Robust calculation of priority_coeff using np.where to handle zero denominators
+            adjusted['priority_coeff'] = np.where(
+                adjusted['total_rate_proj'] > 0,
+                adjusted['Rate'] / adjusted['total_rate_proj'],
+                0
+            )
+            
+            # Calculate final_coeff after ensuring both intermediate coefficients are robust
+            adjusted['final_coeff'] = adjusted['coeff_total'] * adjusted['priority_coeff']
+            
+            # Initial Adjusted Hours calculation
+            adjusted['Adjusted Hours'] = (adjusted['Total Heures'] * (1 - adjusted['final_coeff'])).round()
+            adjusted['Adjusted Hours'] = adjusted['Adjusted Hours'].apply(lambda x: max(x, 0))
+            
+            # Apply 30% rule for cases where Adjusted Hours is 0 but Total Heures > 0
+            condition_for_30_pct_rule = (adjusted['Adjusted Hours'] == 0) & (adjusted['Total Heures'] > 0)
+            adjusted.loc[condition_for_30_pct_rule, 'Adjusted Hours'] = \
+                (adjusted.loc[condition_for_30_pct_rule, 'Total Heures'] * 0.3).round()
+            
+            # Ensure Adjusted Hours remains non-negative (extra safeguard)
+            adjusted['Adjusted Hours'] = adjusted['Adjusted Hours'].apply(lambda x: max(x, 0))
+            
+            # Calculate Heures Retirées and Adjusted Cost using the final Adjusted Hours
+            adjusted['Heures Retirées'] = adjusted['Total Heures'] - adjusted['Adjusted Hours']
+            adjusted['Adjusted Cost'] = adjusted['Adjusted Hours'] * adjusted['Rate']
+            
+            # Calculate Max Heures à Retirer - Simplified logic for practical use
+            # This represents reasonable maximum hours that can be removed per employee
+            # Based on: 1) Current hours available, 2) Project budget constraints, 3) Employee rate
+            
+            # Calculate project-level information
+            adjusted['Cout_Total_Projet'] = adjusted.groupby('Libelle projet')['Total'].transform('sum')
+            adjusted['Budget_Disponible'] = adjusted['Estimees'] - adjusted['Cout_Total_Projet']
+            
+            # For projects over budget (negative margin), allow more reduction
+            # For projects under budget (positive margin), allow some reduction but be conservative
+            adjusted['Facteur_Reduction'] = adjusted['Budget_Disponible'].apply(
+                lambda x: 0.8 if x < 0 else 0.3  # 80% reduction if over budget, 30% if under budget
+            )
+            
+            # Calculate employee's share of potential reduction based on their hours contribution
+            adjusted['Heures_Total_Projet'] = adjusted.groupby('Libelle projet')['Total Heures'].transform('sum')
+            adjusted['Pct_Heures_Employee'] = adjusted['Total Heures'] / adjusted['Heures_Total_Projet']
+            
+            # Base calculation: percentage of employee's current hours that could be reduced
+            adjusted['Max_Heures_Base'] = adjusted['Total Heures'] * adjusted['Facteur_Reduction'] * adjusted['Pct_Heures_Employee']
+            
+            # Add budget-based constraint for over-budget projects
+            adjusted['Budget_Constraint'] = adjusted.apply(lambda row:
+                abs(row['Budget_Disponible']) * row['Pct_Heures_Employee'] / row['Rate'] 
+                if row['Budget_Disponible'] < 0 and row['Rate'] > 0 
+                else row['Max_Heures_Base'], axis=1)
+            
+            # Final calculation with practical constraints
+            adjusted['Max Heures à Retirer'] = adjusted.apply(lambda row: 
+                min(
+                    row['Total Heures'] - 1,  # Always leave at least 1 hour
+                    max(
+                        1,  # Always allow at least 1 hour to be removed
+                        row['Budget_Constraint']
+                    )
+                ) if row['Total Heures'] > 1 else 0, axis=1)
+            
+            # Round to whole numbers and ensure non-negative
+            adjusted['Max Heures à Retirer'] = adjusted['Max Heures à Retirer'].apply(lambda x: max(0, round(x)))
+            
+            adjusted['ID'] = adjusted['Nom'].astype(str) + ' - ' + adjusted['Libelle projet'].astype(str)
+            processing_logs.append("DEBUG: Adjusted calculations completed with robust coefficient handling and 30% rule applied")
+
+            cols = ['ID'] + [col for col in adjusted.columns if col != 'ID']
+            adjusted = adjusted[cols]
+
+            result = (
+                adjusted
+                .groupby('Libelle projet', as_index=False)
+                .agg({'Total Heures': 'sum', 'Adjusted Hours': 'sum', 'Adjusted Cost': 'sum', 'Heures Retirées': 'sum'})
+                .merge(global_summary[['Libelle projet', 'Estimees']], on='Libelle projet', how='left')
+            )
+            result['Ecart'] = result['Estimees'] - result['Adjusted Cost']
+            processing_logs.append("DEBUG: Final result calculations completed")
+
+            for df in [employee_summary, global_summary, adjusted, result]:
+                for col in df.select_dtypes(include='number').columns:
+                    df[col] = df[col].round(0)
+
+            # Save all key DataFrames to Parquet files
+            try:
+                base_df.to_parquet(run_dir / 'base_df.parquet')
+                consultants_df.to_parquet(run_dir / 'consultants_df.parquet')
+                mafe_df.to_parquet(run_dir / 'mafe_df.parquet')
+                codes_df.to_parquet(run_dir / 'codes_df.parquet')
+                employee_summary.to_parquet(run_dir / 'employee_summary_initial.parquet')
+                global_summary.to_parquet(run_dir / 'global_summary_initial.parquet')
+                adjusted.to_parquet(run_dir / 'adjusted_initial.parquet')
+                result.to_parquet(run_dir / 'result_initial.parquet')
+                processing_logs.append(f"INFO: All DataFrames for run_id {run_id} saved to Parquet files.")
+            except Exception as e:
+                processing_logs.append(f"ERROR: Failed to save DataFrames for run_id {run_id}: {str(e)}")
+                raise
+
+            # Generate Excel file
+            processing_logs.append("DEBUG: Starting Excel file generation")
+            output = BytesIO()
+            
+            try:
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    workbook = writer.book
+                    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9D2E9'})
+                    int_format = workbook.add_format({'num_format': '0'})
+
+                    def write(df, sheet, selected_cols=None):
+                        if selected_cols:
+                            df = df[selected_cols]
+                        df.to_excel(writer, sheet_name=sheet, index=False, startrow=1, header=False)
+                        ws = writer.sheets[sheet]
+                        for i, col in enumerate(df.columns):
+                            ws.write(0, i, col, header_format)
+                            width = max(15, len(str(col)) + 2)
+                            ws.set_column(i, i, width, int_format if pd.api.types.is_integer_dtype(df[col]) else None)
+                        ws.add_table(0, 0, len(df), len(df.columns) - 1, {
+                            'name': f'Table_{sheet}',
+                            'style': 'TableStyleLight8',
+                            'columns': [{'header': c} for c in df.columns]
+                        })
+
+                    # Use canonical column order for base sheet
+                    base_canonical_cols = ['Code projet', 'Nom', 'Grade', 'Date', 'Heures']
+                    # Add Libelle projet if present
+                    if 'Libelle projet' in base_df.columns:
+                        base_canonical_cols.append('Libelle projet')
+                    # Ensure only existing columns are used
+                    base_output_cols = [col for col in base_canonical_cols if col in base_df.columns]
+                    write(base_df, '00_Base', base_output_cols)
+                    write(employee_summary, '01_Employee_Summary', ['Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Rate DES', 'Total', 'Total DES'])
+                    write(global_summary, '02_Global_Summary', ['Libelle projet', 'Total Heures', 'Total', 'Total DES', 'Estimees'])
+                    write(adjusted, '03_Adjusted', ['ID', 'Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Total', 'Adjusted Hours', 'Heures Retirées', 'Max Heures à Retirer', 'Adjusted Cost'])
+                    write(result, '04_Result', ['Libelle projet', 'Total Heures', 'Adjusted Hours', 'Heures Retirées', 'Adjusted Cost', 'Estimees', 'Ecart'])
+
+                output.seek(0)
+                now_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"SLR_Facturation_{now_str}.xlsx"
+                processing_logs.append(f"INFO: Excel file generated successfully: {filename}")
+
+                # Save the initial Excel to the run directory
+                initial_excel_filename = f"Initial_SLR_Report_{run_id[:8]}.xlsx"
+                with open(run_dir / initial_excel_filename, 'wb') as f:
+                    f.write(output.getvalue())
+                processing_logs.append(f"INFO: Initial Excel saved as {initial_excel_filename}")
+
+                # Store run_id and filename in session
+                request.session['last_slr_run_id'] = run_id
+                request.session['last_slr_run_heures_filename'] = heures_ibm_file_obj.name
+
+                # Prepare context for the results page
+                context = {
+                    'form': SLRFileUploadForm(),  # Fresh form for a new upload
+                    'page_title': 'Facturation SLR - Initial Report Generated',
+                    'processing_logs': processing_logs,
+                    'initial_report_generated': True,
+                    'run_id': run_id,
+                    'initial_excel_filename': initial_excel_filename,
+                    'original_filename': filename
+                }
+
+                # Add success message
+                messages.success(request, f"Initial report '{filename}' generated and saved. You can now review and make manual adjustments.")
+                
+                # Redirect to the resources dashboard instead of rendering the results page
+                return redirect('dashboard_resources')
+
+            except Exception as e:
+                processing_logs.append(f"ERROR: Excel generation failed: {str(e)}")
+                raise
+
+        except Exception as e:
+            processing_logs.append(f"ERROR: Exception during calculation: {str(e)}<br><pre>{traceback.format_exc()}</pre>")
+            messages.error(request, f"An error occurred while generating the report: {str(e)}")
+            context = {
+                'form': form,
+                'processing_logs': processing_logs,
+                'page_title': 'Facturation SLR',
+            }
+            return render(request, 'billing/facturation_slr.html', context)
+
+    # GET request or fallback
+    # On GET, do not show the buttons unless just after POST
+    context = {
+        'form': form,
+        'page_title': 'Facturation SLR',
+        'processing_logs': processing_logs,
+        'initial_report_generated': False,
+        'run_id': None,
+        'initial_excel_filename': None,
+    }
+    return render(request, 'billing/facturation_slr.html', context)
+
+
+def mission_bulk_delete(request):
+    if request.method == 'POST':
+        try:
+            selected_missions = request.POST.getlist('selected_missions')
+            print(f"DEBUG: Received POST request for bulk delete. Selected missions: {selected_missions}")
+            
+            if not selected_missions:
+                print("DEBUG: No missions selected for deletion")
+                messages.warning(request, 'No missions were selected for deletion.')
+                return redirect('mission_list')
+            
+            # Verify the missions exist before deletion
+            existing_missions = Mission.objects.filter(id__in=selected_missions)
+            print(f"DEBUG: Found {existing_missions.count()} existing missions to delete")
+            
+            if existing_missions.exists():
+                existing_missions.delete()
+                print(f"DEBUG: Successfully deleted {existing_missions.count()} missions")
+                messages.success(request, f'Successfully deleted {existing_missions.count()} mission(s).')
+            else:
+                print("DEBUG: No existing missions found to delete")
+                messages.warning(request, 'No valid missions were found to delete.')
+        except Exception as e:
+            print(f"ERROR: Exception during bulk delete: {str(e)}")
+            messages.error(request, f'An error occurred while deleting missions: {str(e)}')
+    else:
+        print("DEBUG: Non-POST request received for bulk delete")
+        messages.warning(request, 'Invalid request method.')
+    
+    return redirect('mission_list')
+
+
+def download_slr_report(request, run_id, filename):
+    """View to download a generated SLR report."""
+    try:
+        file_path = TEMP_FILES_BASE_DIR / run_id / filename
+        if not file_path.exists():
+            messages.error(request, f"Report file not found: {filename}")
+            return redirect('facturation_slr')
+        
+        with open(file_path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+    except Exception as e:
+        messages.error(request, f"Error downloading report: {str(e)}")
+        return redirect('facturation_slr')
+
+
+def edit_slr_adjustments(request, run_id):
+    """View to edit SLR adjustments."""
+    try:
+        run_dir = TEMP_FILES_BASE_DIR / run_id
+        if not run_dir.exists():
+            messages.error(request, f"Run directory not found for ID: {run_id}")
+            return redirect('facturation_slr')
+
+        # Load the necessary DataFrames
+        adjusted_df = pd.read_parquet(run_dir / 'adjusted_initial.parquet')
+        base_df = pd.read_parquet(run_dir / 'base_df.parquet')
+        
+        # --- Dynamic column detection for base_df if needed for re-processing ---
+        heures_filename = request.session.get('last_slr_run_heures_filename', None)
+        mois_mapping = {
+            'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4, 'mai': 5, 'juin': 6,
+            'juillet': 7, 'août': 8, 'aout': 8, 'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12,
+            'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+        }
+        mois_str = None
+        mois_num = None
+        annee_num = None
+        if heures_filename:
+            match = re.search(r'(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[^\d]*(\d{2,4})', heures_filename, re.IGNORECASE)
+            if match:
+                mois_str = match.group(1).lower()
+                mois_num = mois_mapping.get(mois_str)
+                annee_str = match.group(2)
+                annee_num = int(annee_str)
+                if annee_num < 100:
+                    current_century = (datetime.now().year // 100) * 100
+                    annee_num = current_century + annee_num
+                base_df['Date'] = pd.to_datetime(base_df['Date'], errors='coerce', dayfirst=True)
+                base_df = base_df.dropna(subset=['Date'])
+                base_df = base_df[(base_df['Date'].dt.month == mois_num) & (base_df['Date'].dt.year == annee_num)]
+
+        consultants_df = pd.read_parquet(run_dir / 'consultants_df.parquet')
+        mafe_df = pd.read_parquet(run_dir / 'mafe_df.parquet')
+        codes_df = pd.read_parquet(run_dir / 'codes_df.parquet')
+        employee_summary = pd.read_parquet(run_dir / 'employee_summary_initial.parquet')
+        global_summary = pd.read_parquet(run_dir / 'global_summary_initial.parquet')
+        result = pd.read_parquet(run_dir / 'result_initial.parquet')
+
+        # Remove technical columns from display
+        display_columns = [col for col in adjusted_df.columns if col not in [
+            'Total_Projet_Cout', 'coeff_total', 'total_rate_proj', 
+            'priority_coeff', 'final_coeff'
+        ]]
+        display_df = adjusted_df[display_columns]
+
+        if request.method == 'POST':
+            # Handle form submission for adjustments
+            try:
+                # Get all adjusted hours from the form
+                adjusted_hours = {}
+                for key, value in request.POST.items():
+                    if key.startswith('adjusted_hours_'):
+                        index = int(key.split('_')[-1])
+                        adjusted_hours[index] = float(value)
+
+                # Update the adjusted DataFrame
+                for index, hours in adjusted_hours.items():
+                    adjusted_df.loc[index, 'Adjusted Hours'] = hours
+                    adjusted_df.loc[index, 'Heures Retirées'] = adjusted_df.loc[index, 'Total Heures'] - hours
+                    adjusted_df.loc[index, 'Adjusted Cost'] = hours * adjusted_df.loc[index, 'Rate']
+
+                # Save the updated adjusted DataFrame
+                adjusted_df.to_parquet(run_dir / 'adjusted_updated.parquet')
+
+                # Recalculate the result DataFrame
+                result = (
+                    adjusted_df
+                    .groupby('Libelle projet', as_index=False)
+                    .agg({'Total Heures': 'sum', 'Adjusted Hours': 'sum', 'Adjusted Cost': 'sum', 'Heures Retirées': 'sum'})
+                    .merge(global_summary[['Libelle projet', 'Estimees']], on='Libelle projet', how='left')
+                )
+                result['Ecart'] = result['Estimees'] - result['Adjusted Cost']
+
+                # Save the updated result DataFrame
+                result.to_parquet(run_dir / 'result_updated.parquet')
+
+                # Generate a new Excel file with the updates
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    workbook = writer.book
+                    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9D2E9'})
+                    int_format = workbook.add_format({'num_format': '0'})
+
+                    def write(df, sheet, selected_cols=None):
+                        if selected_cols:
+                            df = df[selected_cols]
+                        df.to_excel(writer, sheet_name=sheet, index=False, startrow=1, header=False)
+                        ws = writer.sheets[sheet]
+                        for i, col in enumerate(df.columns):
+                            ws.write(0, i, col, header_format)
+                            width = max(15, len(str(col)) + 2)
+                            ws.set_column(i, i, width, int_format if pd.api.types.is_integer_dtype(df[col]) else None)
+                        ws.add_table(0, 0, len(df), len(df.columns) - 1, {
+                            'name': f'Table_{sheet}',
+                            'style': 'TableStyleLight8',
+                            'columns': [{'header': c} for c in df.columns]
+                        })
+
+                    # Use canonical column order for base sheet in edit_slr_adjustments too
+                    base_canonical_cols = ['Code projet', 'Nom', 'Grade', 'Date', 'Heures']
+                    # Add Libelle projet if present
+                    if 'Libelle projet' in base_df.columns:
+                        base_canonical_cols.append('Libelle projet')
+                    # Ensure only existing columns are used
+                    base_output_cols = [col for col in base_canonical_cols if col in base_df.columns]
+                    write(base_df, '00_Base', base_output_cols)
+                    write(employee_summary, '01_Employee_Summary', ['Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Rate DES', 'Total', 'Total DES'])
+                    write(global_summary, '02_Global_Summary', ['Libelle projet', 'Total Heures', 'Total', 'Total DES', 'Estimees'])
+                    write(adjusted_df, '03_Adjusted', ['ID', 'Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Total', 'Adjusted Hours', 'Heures Retirées', 'Max Heures à Retirer', 'Adjusted Cost'])
+                    write(result, '04_Result', ['Libelle projet', 'Total Heures', 'Adjusted Hours', 'Heures Retirées', 'Adjusted Cost', 'Estimees', 'Ecart'])
+
+                output.seek(0)
+                now_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                updated_filename = f"SLR_Facturation_Updated_{now_str}.xlsx"
+                # Save the updated Excel file
+                with open(run_dir / updated_filename, 'wb') as f:
+                    f.write(output.getvalue())
+
+                messages.success(request, 'Adjustments saved successfully. You can now download the updated report.')
+                request.session['updated_filename'] = updated_filename
+                return redirect('edit_slr_adjustments', run_id=run_id)
+
+            except Exception as e:
+                messages.error(request, f"Error saving adjustments: {str(e)}")
+                return redirect('edit_slr_adjustments', run_id=run_id)
+
+        # --- Prepare columns for detailed (editable) table ---
+        # Columns: ['ID', 'Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Total', 'Adjusted Hours', 'Heures Retirées', 'Adjusted Cost', 'Script_Calculated_Adjusted_Hours', 'PA_Adjusted_Hours', 'budget']
+        # Force exact columns and order for Table_Ajustements
+        detailed_columns = [
+            'ID', 'Libelle projet', 'Nom', 'Grade', 'Total Heures', 'Rate', 'Total',
+            'Adjusted Hours', 'Heures Retirées', 'Adjusted Cost',
+            'Script_Calculated_Adjusted_Hours', 'PA_Adjusted_Hours', 'budget'
+        ]
+        # Add Script_Calculated_Adjusted_Hours (copy of Adjusted Hours as calculated by script)
+        adjusted_df['Script_Calculated_Adjusted_Hours'] = adjusted_df['Adjusted Hours']
+        # Add PA_Adjusted_Hours placeholder (user can fill later or via future UI)
+        if 'PA_Adjusted_Hours' not in adjusted_df.columns:
+            adjusted_df['PA_Adjusted_Hours'] = 0
+        # Add budget column by merging from global_summary
+        if 'Libelle projet' in adjusted_df.columns and 'Libelle projet' in global_summary.columns:
+            adjusted_df = adjusted_df.merge(global_summary[['Libelle projet', 'Estimees']].rename(columns={'Estimees': 'budget'}), on='Libelle projet', how='left')
+        else:
+            adjusted_df['budget'] = 0
+        # Ensure all columns exist and in the right order
+        for col in detailed_columns:
+            if col not in adjusted_df.columns:
+                adjusted_df[col] = 0
+        display_df = adjusted_df[detailed_columns]
+
+        # --- Load summary table: result_df (latest updated or initial) ---
+        import os
+        result_path_updated = run_dir / 'result_updated.parquet'
+        result_path_initial = run_dir / 'result_initial.parquet'
+        if os.path.exists(result_path_updated):
+            result_df = pd.read_parquet(result_path_updated)
+        else:
+            result_df = pd.read_parquet(result_path_initial)
+        summary_columns = result_df.columns.tolist()  # Or specify a fixed order if needed
+
+        updated_filename = request.session.pop('updated_filename', None)
+        context = {
+            'page_title': 'Edit SLR Adjustments',
+            'run_id': run_id,
+            'adjusted_df': display_df.to_dict('records'),
+            'columns': display_df.columns.tolist(),
+            'total_rows': len(display_df),
+            'original_filename': request.session.get('last_slr_run_heures_filename', 'Unknown'),
+            'updated_filename': updated_filename,
+            'mois_filtre': mois_str,
+            'annee_filtre': annee_num,
+            'summary_df': result_df.to_dict('records'),
+            'summary_columns': summary_columns,
+        }
+        return render(request, 'billing/edit_slr_adjustments.html', context)
+
+    except Exception as e:
+        messages.error(request, f"Error loading adjustments: {str(e)}")
+        return redirect('facturation_slr')
+
+@csrf_exempt
+@require_POST
+def ajax_update_adjusted_hours(request):
+    try:
+        data = json.loads(request.body)
+        row_id = data.get('row_id')
+        new_value = float(data.get('adjusted_hours'))
+        run_id = data.get('run_id')
+        run_dir = TEMP_FILES_BASE_DIR / run_id
+        adjusted_path = run_dir / 'adjusted_initial.parquet'
+        if not adjusted_path.exists():
+            return JsonResponse({'success': False, 'error': 'Adjusted file not found'})
+        import pandas as pd
+        adjusted_df = pd.read_parquet(adjusted_path)
+        # Find the row by ID
+        idx = adjusted_df[adjusted_df['ID'] == row_id].index
+        if len(idx) == 0:
+            return JsonResponse({'success': False, 'error': 'Row not found'})
+        idx = idx[0]
+        adjusted_df.at[idx, 'Adjusted Hours'] = new_value
+        adjusted_df.at[idx, 'Heures Retirées'] = adjusted_df.at[idx, 'Total Heures'] - new_value
+        adjusted_df.at[idx, 'Adjusted Cost'] = new_value * adjusted_df.at[idx, 'Rate']
+        # Save back
+        adjusted_df.to_parquet(adjusted_path)
+        # Return updated values for the row
+        return JsonResponse({'success': True, 'updated_row': {
+            'adjusted_hours': float(adjusted_df.at[idx, 'Adjusted Hours']),
+            'adjusted_cost': float(adjusted_df.at[idx, 'Adjusted Cost']),
+            'heures_retires': float(adjusted_df.at[idx, 'Heures Retirées'])
+        }})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def ajax_get_project_dates(request, run_id):
+    """Récupère les dates d'imputation pour un projet et employé spécifiques"""
+    try:
+        project_name = request.GET.get('project')
+        employee_name = request.GET.get('employee')
+        
+        if not project_name or not employee_name:
+            return JsonResponse({'success': False, 'error': 'Projet et employé requis'})
+        
+        run_dir = TEMP_FILES_BASE_DIR / run_id
+        base_df_path = run_dir / 'base_df.parquet'
+        
+        if not base_df_path.exists():
+            return JsonResponse({'success': False, 'error': 'Données de base non trouvées'})
+        
+        import pandas as pd
+        base_df = pd.read_parquet(base_df_path)
+        
+        # Filtrer par projet et employé
+        filtered_df = base_df[
+            (base_df['Libelle projet'] == project_name) & 
+            (base_df['Nom'] == employee_name)
+        ]
+        
+        if filtered_df.empty:
+            return JsonResponse({'success': True, 'dates': []})
+        
+        # Convertir les dates en format lisible et les trier
+        dates_list = []
+        for _, row in filtered_df.iterrows():
+            date_str = str(row['Date'])
+            if pd.notna(row['Date']) and date_str != 'NaT':
+                try:
+                    # Convertir en datetime si ce n'est pas déjà fait
+                    if hasattr(row['Date'], 'strftime'):
+                        formatted_date = row['Date'].strftime('%d/%m/%Y')
+                    else:
+                        # Si c'est une string, essayer de la parser
+                        date_obj = pd.to_datetime(row['Date'])
+                        formatted_date = date_obj.strftime('%d/%m/%Y')
+                    
+                    dates_list.append({
+                        'date': formatted_date,
+                        'heures': float(row['Heures']) if pd.notna(row['Heures']) else 0
+                    })
+                except:
+                    # Si la conversion échoue, utiliser la valeur brute
+                    dates_list.append({
+                        'date': str(row['Date']),
+                        'heures': float(row['Heures']) if pd.notna(row['Heures']) else 0
+                    })
+        
+        # Trier par date
+        dates_list.sort(key=lambda x: x['date'])
+        
+        return JsonResponse({'success': True, 'dates': dates_list})
+    
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+def download_ibm_report(request, run_id):
+    """Génère et télécharge le rapport IBM T&E à partir des données ajustées"""
+    try:
+        import pandas as pd
+        import os
+        from datetime import datetime
+        from django.http import FileResponse, Http404
+        from io import BytesIO
+        import openpyxl
+        from pathlib import Path
+        
+        # Chemins
+        run_dir = TEMP_FILES_BASE_DIR / run_id
+        adjusted_path = run_dir / 'adjusted_initial.parquet'
+        
+        if not adjusted_path.exists():
+            raise Http404("Données ajustées non trouvées")
+        
+        # Charger les données ajustées
+        adjusted_df = pd.read_parquet(adjusted_path)
+        
+        # Détecter le mois depuis le nom de fichier original ou session
+        mois_num = request.session.get('last_slr_run_month', datetime.now().month)
+        mois_str = f"{mois_num:02d}"
+        
+        # Chemins des fichiers IBM template
+        project_root = Path("C:/Users/samadane/Documents/Projetx")
+        template_path = project_root / "IBM T&E Template - France - v202507.xlsx"
+        
+        if not template_path.exists():
+            raise Http404("Template IBM non trouvé")
+        
+        # Nouveau nom avec le mois détecté
+        output_filename = f"IBM T&E Template - France - v2025{mois_str}.xlsx"
+        
+        # Charger le template IBM
+        workbook = openpyxl.load_workbook(template_path)
+        
+        # Vérifier si la sheet "Time and Expense" existe
+        sheet_name = "Time and Expense"
+        if sheet_name not in workbook.sheetnames:
+            raise Http404(f"Sheet '{sheet_name}' non trouvée dans le template IBM")
+        
+        sheet = workbook[sheet_name]
+        
+        # Trouver les colonnes et la ligne d'en-têtes dans la sheet
+        header_row = None
+        inspection_name_col = None
+        team_member_name_col = None
+        hours_col = None
+        
+        # Chercher la ligne d'en-têtes (peut être ligne 1, 2, ou autre)
+        for row in range(1, min(10, sheet.max_row + 1)):  # Chercher dans les 10 premières lignes
+            for col in range(1, sheet.max_column + 1):
+                cell_value = sheet.cell(row, col).value
+                if cell_value and "Inspection Name" in str(cell_value):
+                    header_row = row
+                    break
+            if header_row:
+                break
+        
+        if not header_row:
+            raise Http404("Ligne d'en-têtes avec 'Inspection Name' non trouvée")
+        
+        # Maintenant trouver toutes les colonnes sur cette ligne d'en-têtes
+        for col in range(1, sheet.max_column + 1):
+            cell_value = sheet.cell(header_row, col).value
+            if cell_value:
+                if "Inspection Name" in str(cell_value):
+                    inspection_name_col = col
+                elif "Team Member Name" in str(cell_value):
+                    team_member_name_col = col
+                elif "Hours" == str(cell_value).strip():
+                    hours_col = col
+        
+        if not all([inspection_name_col, team_member_name_col, hours_col]):
+            raise Http404("Colonnes requises non trouvées dans le template IBM")
+        
+        # Effacer les données existantes (garder l'en-tête)
+        data_start_row = header_row + 1
+        for row in range(data_start_row, sheet.max_row + 1):
+            for col in range(1, sheet.max_column + 1):
+                sheet.cell(row, col).value = None
+        
+        # Remplir avec les nouvelles données (commencer après la ligne d'en-têtes)
+        row_idx = data_start_row
+        for _, row_data in adjusted_df.iterrows():
+            sheet.cell(row_idx, inspection_name_col).value = row_data.get('Libelle projet', '')
+            sheet.cell(row_idx, team_member_name_col).value = row_data.get('Nom', '')
+            sheet.cell(row_idx, hours_col).value = float(row_data.get('Adjusted Hours', 0))
+            row_idx += 1
+        
+        # Sauvegarder en mémoire
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        
+        # Préparer la réponse
+        response = FileResponse(
+            output,
+            as_attachment=True,
+            filename=output_filename,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        return response
+        
+    except Exception as e:
+        messages.error(request, f"Erreur lors de la génération du rapport IBM : {str(e)}")
+        return redirect('edit_slr_adjustments', run_id=run_id)
+
+def chatbot_view(request):
+    """Vue pour le chatbot DeloBot Assistant"""
+    # Récupérer les données réelles pour les suggestions du chatbot
+    resources = Resource.objects.all().values('id', 'full_name', 'matricule', 'grade')
+    missions = Mission.objects.all().values('id', 'otp_l2', 'belgian_name', 'libelle_de_projet')
+    
+    context = {
+        'page_title': 'DeloBot Assistant',
+        'resources': list(resources),
+        'missions': list(missions),
+    }
+    return render(request, 'billing/chatbot.html', context)
+
+
+def to_python_type(obj):
+    if isinstance(obj, dict):
+        return {k: to_python_type(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [to_python_type(v) for v in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    else:
+        return obj

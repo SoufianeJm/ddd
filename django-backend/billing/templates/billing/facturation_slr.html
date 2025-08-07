@@ -1,0 +1,454 @@
+{% extends "billing/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Facturation SLR{% endblock %}
+{% block page_title %}
+    <span class="page-title"></span>
+{% endblock %}
+
+{% block content %}
+    <div id="stepper-alert" class="alert alert-warning" style="display:none;max-width:580px;margin:0 auto 1rem auto;"></div>
+    <div class="tab-bar" style="margin-bottom: 2.2rem;">
+        {% if not initial_report_generated %}
+            <button class="tab active" data-tab="1">1 Importation</button>
+            <button class="tab disabled" data-tab="2">2 Résultats</button>
+            <button class="tab disabled" data-tab="3">3 Modification</button>
+        {% elif edit_mode %}
+            <a href="/facturation/slr/" class="tab-link"><button class="tab" data-tab="1">1 Importation</button></a>
+            <a href="/facturation/slr/?show_results_buttons=1" class="tab-link"><button class="tab" data-tab="2">2 Résultats</button></a>
+            <button class="tab active" data-tab="3">3 Modification</button>
+        {% else %}
+            <a href="/facturation/slr/" class="tab-link"><button class="tab" data-tab="1">1 Importation</button></a>
+            <button class="tab active" data-tab="2">2 Résultats</button>
+            {% if run_id %}
+            <a href="/facturation/slr/{{ run_id }}/edit/" class="tab-link"><button class="tab" data-tab="3">3 Modification</button></a>
+            {% else %}
+            <button class="tab disabled" data-tab="3">3 Modification</button>
+            {% endif %}
+        {% endif %}
+    </div>
+    <div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 80vh;">
+        <div class="w-100" style="max-width: 540px;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="text-center flex-grow-1">
+                    <span style="font-size:1.35rem; font-weight:700; color:#222;">Étape 1 :</span>
+                    <span style="font-size:1.25rem; font-weight:500; color:#444;"> Importation des fichiers</span>
+                </div>
+                <button class="btn btn-sm btn-outline-info" onclick="window.userGuide?.showQuickHelp('upload')" title="Aide rapide">
+                    <i class="fas fa-question-circle"></i> Aide
+                </button>
+            </div>
+            <div class="card shadow-sm p-4" style="border-radius:24px; background:#fff;">
+                {% if initial_report_generated %}
+                <div class="alert alert-success mb-4">
+                    <h4 class="alert-heading">Rapport généré avec succès !</h4>
+                    <p>Le rapport initial a été généré et sauvegardé. Vous pouvez maintenant :</p>
+                </div>
+                <div class="d-flex gap-3 mb-4">
+                    <a href="{% url 'download_slr_report' run_id=run_id filename=initial_excel_filename %}" class="btn btn-primary">
+                        <i class="fas fa-download"></i>
+                        <span>Télécharger</span>
+                    </a>
+                    <a href="{% url 'edit_slr_adjustments' run_id=run_id %}" class="btn btn-secondary">
+                        <i class="fas fa-edit"></i>
+                        <span>Ajuster</span>
+                    </a>
+                </div>
+            {% endif %}
+            <form method="post" enctype="multipart/form-data" id="slrForm">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label for="id_mafe_report_file" class="form-label fw-semibold mb-2">DTT IMT France MAFE Report (xlsx)</label>
+                    <input type="file" name="mafe_report_file" id="id_mafe_report_file" class="form-control bg-white border-0 shadow-sm py-2 px-3" accept=".xlsx">
+                </div>
+                <div class="mb-4">
+                    <label for="id_heures_ibm_file" class="form-label fw-semibold mb-2">Heures IBM (xlsx)</label>
+                    <input type="file" name="heures_ibm_file" id="id_heures_ibm_file" class="form-control bg-white border-0 shadow-sm py-2 px-3" accept=".xlsx">
+                </div>
+                <div class="d-flex justify-content-center mt-2">
+                    <button type="submit" name="submit" class="btn btn-success btn-lg w-100 d-flex align-items-center justify-content-center gap-2" style="font-weight:600; font-size:1.18rem; border-radius: 10px;">
+                        <i class="fas fa-file-excel"></i> Générer le Rapport
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+    .stepper-btn-bar {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        justify-content: center;
+        gap: 18px;
+        margin-bottom: 0.2rem;
+    }
+    .stepper-btn {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-width: 170px;
+        min-height: 80px;
+        font-size: 1.45rem;
+        font-weight: 700;
+        background: #fff;
+        color: #7bb62d;
+        border-radius: 24px;
+        border: 2.2px solid #b7e4c7;
+        box-shadow: 0 4px 28px 0 rgba(128,195,66,0.10);
+        cursor: pointer;
+        transition: box-shadow 0.18s, border-color 0.18s, background 0.18s, color 0.18s;
+        margin-bottom: 0;
+        letter-spacing: 0.5px;
+        position: relative;
+        user-select: none;
+    }
+    .stepper-btn span {
+        font-size: 1.18rem;
+        font-weight: 600;
+        color: #5fa81e;
+        margin-top: 2px;
+        letter-spacing: 0.2px;
+    }
+    .stepper-btn.active {
+        background: linear-gradient(90deg, #e9f7df 60%, #d0f5b2 100%);
+        color: #4e8e1d;
+        border-color: #80C342;
+        box-shadow: 0 8px 32px 0 rgba(128,195,66,0.14);
+        z-index: 2;
+    }
+    .stepper-btn.active span {
+        color: #4e8e1d;
+    }
+    .stepper-btn.disabled {
+        opacity: 0.45;
+        pointer-events: none;
+        background: #f5f7fa;
+        color: #b3b3b3;
+        border-color: #e9ecef;
+        box-shadow: none;
+    }
+    .stepper-btn-link {
+        text-decoration: none;
+    }
+    .stepper-btn-link .stepper-btn:hover {
+        background: linear-gradient(90deg, #e3f3d0 60%, #d0f5b2 100%);
+        border-color: #80C342;
+        box-shadow: 0 12px 32px 0 rgba(128,195,66,0.16);
+        color: #4e8e1d;
+    }
+    @media (max-width: 900px) {
+        .stepper-btn-bar { gap: 8px; }
+        .stepper-btn { min-width: 110px; font-size: 1.03rem; min-height: 60px; }
+    }
+    @media (max-width: 600px) {
+        .facturation-stepper-horizontal { max-width: 99vw; }
+        .stepper-btn-bar { flex-direction: column; gap: 12px; }
+        .stepper-btn { min-width: 90vw; font-size: 1.01rem; min-height: 48px; }
+    }
+
+    body {
+        font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: var(--bg-light, #f4f6f8);
+    }
+    .facturation-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 70vh;
+        padding: 48px 0;
+        background: linear-gradient(120deg, #f4f6f8 60%, #e9f7df 100%);
+    }
+    .facturation-card {
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 6px 32px rgba(128, 195, 66, 0.10), 0 1.5px 6px rgba(52,58,64,0.06);
+        padding: 44px 40px 36px 40px;
+        max-width: 480px;
+        width: 100%;
+        margin: 0 auto;
+        position: relative;
+        animation: fadeInUp 0.7s cubic-bezier(.23,1.01,.32,1) 0s;
+    }
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(40px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .facturation-card h2, .facturation-card h4, .facturation-card label {
+        font-family: inherit;
+    }
+    .alert {
+        border-radius: 10px;
+        padding: 1.5rem 1.25rem;
+        font-size: 1.1rem;
+        margin-bottom: 0;
+        box-shadow: 0 2px 8px rgba(128, 195, 66, 0.08);
+        animation: fadeIn 0.5s;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    .alert-success {
+        background: linear-gradient(90deg, #e9f7df 80%, #d4edda 100%);
+        border: 1.5px solid #b7e4c7;
+        color: #2e7d32;
+        font-weight: 600;
+    }
+    .d-flex {
+        display: flex;
+        align-items: center;
+    }
+    .gap-3 {
+        gap: 1.2rem;
+    }
+    .mt-3 { margin-top: 1.5rem; }
+    .mb-4 { margin-bottom: 2rem; }
+    .facturation-card form {
+        margin-top: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .modern-form {
+        margin-top: 1.5rem;
+    }
+    .form-group {
+        margin-bottom: 1.5em;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .form-label {
+        font-weight: 600; 
+        color: #343a40;
+        margin-bottom: 0.5em;
+        font-size: 1.08rem;
+        font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    .form-control {
+        border-radius: 7px;
+        border: 1.5px solid #e9ecef;
+        font-size: 1.08rem;
+        padding: 10px 14px;
+        background: #f8fafc;
+        transition: border-color 0.2s;
+        box-shadow: none;
+        font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: #222;
+        width: 100%;
+    }
+    .form-control:focus {
+        border-color: var(--primary-color, #80C342);
+        background: #fff;
+    }
+    .file-input {
+        padding: 10px 14px;
+        background: #f8fafc;
+        border-radius: 7px;
+        border: 1.5px solid #e9ecef;
+        font-size: 1.08rem;
+        color: #343a40;
+        cursor: pointer;
+        transition: border-color 0.2s;
+    }
+    .file-input:focus {
+        border-color: var(--primary-color, #80C342);
+        background: #fff;
+    }
+    .file-input::-webkit-file-upload-button {
+        background: var(--primary-color, #80C342);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .file-input:hover::-webkit-file-upload-button,
+    .file-input:focus::-webkit-file-upload-button {
+        background: #6d9a1d;
+    }
+    .file-input::file-selector-button {
+        background: var(--primary-color, #80C342);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .file-input:hover::file-selector-button,
+    .file-input:focus::file-selector-button {
+        background: #6d9a1d;
+    }
+    .btn {
+        padding: 12px 28px;
+        font-weight: 600;
+        border-radius: 8px;
+        font-size: 1.08rem;
+        transition: all 0.18s cubic-bezier(.23,1.01,.32,1);
+        box-shadow: 0 2px 8px rgba(128, 195, 66, 0.07);
+        border: none;
+        outline: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+    }
+    .btn-primary {
+        background: linear-gradient(90deg, var(--primary-color, #80C342) 80%, #aee571 100%);
+        color: #fff;
+    }
+    .btn-primary:hover, .btn-primary:focus {
+        background: linear-gradient(90deg, #6d9a1d 80%, #aee571 100%);
+        color: #fff;
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 4px 16px rgba(128, 195, 66, 0.13);
+    }
+    .btn-success {
+        background: linear-gradient(90deg, #28a745 80%, #80C342 100%);
+        color: #fff;
+    }
+    .btn-success:hover, .btn-success:focus {
+        background: linear-gradient(90deg, #218838 80%, #80C342 100%);
+        color: #fff;
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 4px 16px rgba(40, 167, 69, 0.13);
+    }
+    .btn:active {
+        transform: scale(0.98);
+    }
+    .form-actions {
+        margin-top: 2em;
+        display: flex;
+        gap: 1em;
+    }
+    .form-actions .btn {
+        min-width: 120px;
+    }
+    .form-actions .btn-cancel {
+        background: #e9ecef;
+        color: #343a40;
+    }
+    .form-actions .btn-cancel:hover {
+        background: #d6d8db;
+    }
+    .form-actions .btn-primary {
+        margin-right: 0.5em;
+    }
+    .form-group input[type="file"] {
+        background: #fff;
+        border: 1.5px solid #e9ecef;
+        border-radius: 7px;
+        padding: 8px 10px;
+    }
+    .form-group input[type="file"]:focus {
+        border-color: var(--primary-color, #80C342);
+    }
+    .form-group .error-message {
+        color: #c0392b;
+        font-size: 0.98em;
+        margin-top: 0.3em;
+    }
+    .page-title {
+        font-size: 2.1rem;
+        font-weight: 700;
+        color: var(--primary-color, #80C342);
+        letter-spacing: 1px;
+        margin-bottom: 0.5em;
+        text-align: center;
+        text-shadow: 0 2px 8px rgba(128, 195, 66, 0.08);
+    }
+    @media (max-width: 600px) {
+        .facturation-card {
+            padding: 18px 8px 18px 8px;
+        }
+        .btn {
+            padding: 10px 16px;
+            font-size: 1em;
+        }
+    }
+    .modern-action-buttons {
+        display: flex;
+        gap: 0.7rem;
+        justify-content: center;
+        margin-bottom: 2.5rem;
+        margin-top: 0.5rem;
+    }
+    .modern-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 8px 18px;
+        border-radius: 6px;
+        font-size: 1.01rem;
+        font-weight: 600;
+        background: linear-gradient(90deg, #80C342 80%, #aee571 100%);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(128, 195, 66, 0.10);
+        border: none;
+        outline: none;
+        text-decoration: none;
+        transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
+        letter-spacing: 0.2px;
+        min-width: 0;
+        min-height: 0;
+    }
+    .modern-btn i {
+        font-size: 1.1rem;
+        margin-bottom: 0;
+    }
+    .modern-btn span {
+        font-size: 1.01rem;
+        font-weight: 600;
+        letter-spacing: 0.1px;
+    }
+    .modern-btn:hover, .modern-btn:focus {
+        background: linear-gradient(90deg, #6d9a1d 80%, #aee571 100%);
+        color: #fff;
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 4px 16px rgba(128, 195, 66, 0.13);
+        text-decoration: none;
+    }
+    .download-btn {
+        background: linear-gradient(90deg, #80C342 80%, #aee571 100%);
+    }
+    .edit-btn {
+        background: linear-gradient(90deg, #28a745 80%, #80C342 100%);
+    }
+    .edit-btn:hover, .edit-btn:focus {
+        background: linear-gradient(90deg, #218838 80%, #80C342 100%);
+    }
+    @media (max-width: 600px) {
+        .modern-action-buttons {
+            flex-direction: row;
+            gap: 0.5rem;
+        }
+        .modern-btn {
+            width: auto;
+            justify-content: center;
+            font-size: 0.98rem;
+            padding: 8px 12px;
+        }
+        .modern-btn span {
+            font-size: 0.98rem;
+        }
+    }
+</style>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('slrForm');
+    const generateReportBtn = document.getElementById('generateReportBtn');
+
+    form.addEventListener('submit', function(event) {
+        console.log('Form submission started');
+        generateReportBtn.disabled = true;
+        generateReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Génération du rapport...';
+    });
+});
+</script>

@@ -1,0 +1,728 @@
+{% extends "billing/base.html" %}
+
+{% block title %}Accueil - Dashboard{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="tab-bar">
+    <button class="tab active" data-tab="1">ACCEUIL GÉNÉRAL</button>
+    <button class="tab" data-tab="2">ANALYSE PAR EMPLOYÉ</button>
+    <button class="tab" data-tab="3">AVANT / APRÉS AJUSTEMENT</button>
+    <button class="tab" data-tab="4">TABLEAU INTERACTIF</button>
+</div>
+<!-- KPI HEADER (projet sélectionné) -->
+<div id="kpi-header-zone" style="margin: 0 0 24px 0; display: flex; justify-content: center; align-items: flex-start;">
+  {% for projet, data in projects_data_json.items %}
+    <div class="kpi-card-row kpi-card-row-single kpi-header-row" data-projet="{{ projet }}" style="display: none;">
+      <div style="min-width:140px;font-weight:600;color:#80C342;">{{ projet }}</div>
+      <div class="kpi-card-mini"><span class="kpi-label">Nb Employés</span><span class="kpi-value">{{ data.kpis.nbEmployes|default:'-' }}</span></div>
+      <div class="kpi-card-mini"><span class="kpi-label">Budget Estimé</span><span class="kpi-value">{{ data.kpis.totalBudgetEstime|floatformat:0|default:'-' }}</span></div>
+      <div class="kpi-card-mini"><span class="kpi-label">Adjusted Cost</span><span class="kpi-value">{{ data.kpis.totalAdjustedCost|floatformat:0|default:'-' }}</span></div>
+      <div class="kpi-card-mini"><span class="kpi-label">Écart</span><span class="kpi-value">{{ data.kpis.totalEcart|floatformat:0|default:'-' }}</span></div>
+      <div class="kpi-card-mini"><span class="kpi-label">% Ajustement</span><span class="kpi-value">{{ data.kpis.pctAjustement|floatformat:2|default:'-' }}%</span></div>
+    </div>
+  {% endfor %}
+</div>
+<div id="tab-content-1" class="tab-content">
+    {% if data_available %}
+   <div class="accueil-general-content">
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <h4>Nb Employés</h4>
+                <p id="kpi-nb-employes"></p>
+<pre id="kpi-json-debug" style="background:#f8f8f8;color:#333;font-size:12px;border-radius:6px;padding:8px;overflow-x:auto;"></pre>
+            </div>
+            <div class="kpi-card">
+                <h4>Total Budget Estimé</h4>
+                <p id="kpi-budget-estime"></p>
+            </div>
+            <div class="kpi-card">
+                <h4>Total Adjusted Cost</h4>
+                <p id="kpi-adjusted-cost"></p>
+            </div>
+            <div class="kpi-card">
+                <h4>Total Écart</h4>
+                <p id="kpi-ecart"></p>
+            </div>
+            <div class="kpi-card">
+                <h4>% Ajustement</h4>
+                <p id="kpi-pct-ajustement"></p>
+            </div>
+        </div>
+        <!-- Tableau récapitulatif des KPIs par projet -->
+        <div class="kpi-table-wrapper" style="margin-top:24px;">
+          <h5 style="margin-bottom:8px;font-weight:600;">Libelle Projet</h5>
+          <div id="kpi-projet-btn-bar" style="margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+  {% for projet in projects_data_json.keys %}
+    <button class="kpi-projet-btn{% if forloop.first %} active{% endif %}" data-projet="{{ projet }}">{{ projet }}</button>
+  {% endfor %}
+</div>
+<!-- Injection JSON Django pour le tableau projets -->
+{{ table_projets|json_script:"table-projets-json" }}
+<!-- Tableau synthétique premium de tous les projets (dynamique JS) -->
+<table id="table-all-projets" class="table-modern" style="margin:0 auto 18px auto;max-width:900px;width:98%;background:#fff;border-radius:14px;box-shadow:0 2px 12px #e9f7df;">
+  <thead>
+    <tr style="background:#e9f7df;color:#222;font-weight:700;">
+      <th>Projet</th>
+      <th>Total Heures</th>
+      <th>Adjusted Hours</th>
+      <th>Adjusted Cost</th>
+      <th>Heures Retirées</th>
+      <th>Estimees</th>
+      <th>Ecart</th>
+    </tr>
+  </thead>
+  <tbody id="table-all-projets-body">
+    <!-- Ligne dynamique du projet sélectionné -->
+  </tbody>
+</table>
+<script>
+// Injection du JSON projets_data_json_from_view pour Chart.js
+try {
+  window.allProjectsData = JSON.parse(document.getElementById('allProjectsData').textContent);
+} catch(e) {
+  console.error('Erreur de parsing allProjectsData:', e);
+  window.allProjectsData = {};
+}
+// Log pour débogage
+console.log('allProjectsData:', window.allProjectsData);
+try {
+  const tableProjets = JSON.parse(document.getElementById('table-projets-json').textContent);
+  console.log('tableProjets:', tableProjets);
+  if (!Array.isArray(tableProjets) || !tableProjets.length) {
+    document.getElementById('table-all-projets-body').innerHTML = '<tr><td colspan="7" style="color:red;text-align:center;">Aucune donnée projet disponible</td></tr>';
+  }
+} catch(e) {
+  console.error('Erreur de parsing tableProjets:', e);
+  document.getElementById('table-all-projets-body').innerHTML = '<tr><td colspan="7" style="color:red;text-align:center;">Erreur de données projet</td></tr>';
+}
+function fillAllProjetsTable() {
+  const tableProjets = JSON.parse(document.getElementById('table-projets-json').textContent);
+  const tbody = document.getElementById('table-all-projets-body');
+  tbody.innerHTML = '';
+  tableProjets.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style='font-weight:600;color:#80C342;'>${row["Libelle projet"]}</td>`+
+      `<td style='text-align:center;'>${row["Total Heures"]}</td>`+
+      `<td style='text-align:center;'>${row["Adjusted Hours"]}</td>`+
+      `<td style='text-align:center;'>${row["Adjusted Cost"]}</td>`+
+      `<td style='text-align:center;'>${row["Heures Retirées"]}</td>`+
+      `<td style='text-align:center;'>${row["Estimees"]}</td>`+
+      `<td style='text-align:center;'>${row["Ecart"]}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+document.addEventListener('DOMContentLoaded', fillAllProjetsTable);
+</script>
+<!-- Tableau horizontal premium des heures projet sélectionné -->
+<!--<div id="kpi-heures-table" class="kpi-card-row kpi-card-row-single" style="justify-content:center;gap:28px;margin:0 0 18px 0;display:flex;">
+  <div style="min-width:160px;font-weight:600;color:#80C342;">Heures du projet</div>
+  <div class="kpi-card-mini"><span class="kpi-label">Heures réelles</span><span class="kpi-value" id="kpi-heures-reelles">-</span></div>
+  <div class="kpi-card-mini"><span class="kpi-label">Heures ajustées</span><span class="kpi-value" id="kpi-heures-ajustees">-</span></div>
+</div>-->
+<style>
+.kpi-projet-btn-bar {margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.kpi-projet-btn {
+  background: #fff;
+  border: 1.5px solid #80C342;
+  color: #80C342;
+  font-weight: 600;
+  padding: 7px 20px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  outline: none;
+  margin-bottom: 4px;
+}
+.kpi-projet-btn.active, .kpi-projet-btn:hover {
+  background: #e9f7df;
+  color: #222;
+  box-shadow: 0 2px 8px #e9f7df;
+  border-color: #80C342;
+}
+</style>
+          <!--<div id="kpi-table-cards" style="display:flex;flex-direction:column;gap:8px;">
+            {% for projet, data in projects_data_json.items %}
+              <div class="kpi-card-row" data-projet="{{ projet }}" style="display:flex;align-items:center;gap:8px;background:#fff;border-radius:10px;box-shadow:0 2px 8px #e9f7df;padding:12px 18px;">
+                <div style="min-width:140px;font-weight:600;color:#80C342;">{{ projet }}</div>
+                <div class="kpi-card-mini"><span class="kpi-label">Nb Employés</span><span class="kpi-value">{{ data.kpis.nbEmployes|default:'-' }}</span></div>
+                <div class="kpi-card-mini"><span class="kpi-label">Budget Estimé</span><span class="kpi-value">{{ data.kpis.totalBudgetEstime|floatformat:0|default:'-' }}</span></div>
+                <div class="kpi-card-mini"><span class="kpi-label">Adjusted Cost</span><span class="kpi-value">{{ data.kpis.totalAdjustedCost|floatformat:0|default:'-' }}</span></div>
+                <div class="kpi-card-mini"><span class="kpi-label">Écart</span><span class="kpi-value">{{ data.kpis.totalEcart|floatformat:0|default:'-' }}</span></div>
+                <div class="kpi-card-mini"><span class="kpi-label">% Ajustement</span><span class="kpi-value">{{ data.kpis.pctAjustement|floatformat:2|default:'-' }}%</span></div>
+              </div>
+            {% empty %}
+              <div style="text-align:center;">Aucun projet disponible</div>
+            {% endfor %}
+          </div>
+        </div>-->
+        <style>
+        .kpi-card-row {transition:box-shadow 0.2s;}
+        .kpi-card-row:hover {box-shadow:0 4px 16px #b6f0c2;}
+        .kpi-card-mini {background:#f8f8f8;border-radius:8px;padding:8px 16px;display:flex;flex-direction:column;align-items:center;min-width:110px;}
+        .kpi-label {font-size:0.8em;font-weight:500;color:#6C757D;}
+        .kpi-value {font-size:1.2em;font-weight:600;color:#343A40;}
+        /* Style pour affichage unique full-width */
+        .kpi-card-row-single {
+          justify-content: center !important;
+          margin: 0 auto;
+          width: 95%;
+          background: #f8f8f8 !important;
+          box-shadow: 0 2px 16px #e9f7df;
+          gap: 24px !important;
+          padding: 32px 0 !important;
+          font-size: 1.15em;
+        }
+        .kpi-card-row-single .kpi-card-mini {
+          min-width: 140px;
+          background: #fff;
+          border: 1.5px solid #e9f7df;
+          box-shadow: 0 2px 8px #e9f7df;
+          padding: 18px 24px;
+          font-size: 1.1em;
+        }
+        .kpi-card-row-single > div:first-child {
+          font-size: 1.15em;
+          color: #80C342;
+          min-width: 200px;
+          text-align: left;
+        }
+        /* Style premium horizontal pour le header KPI projet sélectionné */
+        .kpi-header-row {
+          display: flex;
+          flex-direction: row;
+          justify-content: center;
+          align-items: stretch;
+          background: #fff !important;
+          box-shadow: 0 2px 16px #e9f7df;
+          border-radius: 18px;
+          gap: 24px;
+          padding: 24px 0;
+          margin-bottom: 18px;
+          width: 98%;
+          max-width: 1200px;
+          min-width: 600px;
+        }
+        .kpi-header-row > div:first-child {
+          font-size: 1.15em;
+          color: #80C342;
+          min-width: 180px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+        }
+        .kpi-header-row .kpi-card-mini {
+          min-width: 140px;
+          background: #f8f8f8;
+          border: 1.5px solid #e9f7df;
+          box-shadow: 0 2px 8px #e9f7df;
+          padding: 18px 24px;
+          font-size: 1.1em;
+          border-radius: 14px;
+          margin: 0 2px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        .kpi-header-row .kpi-label {
+          font-size: 0.92em;
+          color: #6C757D;
+          font-weight: 600;
+        }
+        .kpi-header-row .kpi-value {
+          font-size: 1.35em;
+          color: #222;
+          font-weight: 700;
+          margin-top: 2px;
+        }
+        </style>
+        <script>
+// --- Dynamique mise à jour du tableau heures projet sélectionné ---
+function updateHeuresTable(projetName) {
+    const allProjectsData = window.allProjectsData || {};
+    const dataProjet = allProjectsData[projetName]?.kpis || {};
+    // Extraction robuste des heures
+    const heuresReelles = dataProjet.heuresReelles ?? dataProjet.Heures_reelles ?? dataProjet.totalHeures ?? 0;
+    const heuresAjustees = dataProjet.heuresAjustees ?? dataProjet.Heures_ajustees ?? dataProjet.adjustedHours ?? 0;
+    document.getElementById('kpi-heures-reelles').textContent = heuresReelles;
+    document.getElementById('kpi-heures-ajustees').textContent = heuresAjustees;
+}
+// Init au chargement (premier projet actif)
+document.addEventListener('DOMContentLoaded', function() {
+    var btns = document.querySelectorAll('.kpi-projet-btn');
+    if(btns.length>0) {
+        var projetName = btns[0].getAttribute('data-projet');
+        updateHeuresTable(projetName);
+        btns[0].classList.add('active');
+    }
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btns.forEach(b=>b.classList.remove('active'));
+            this.classList.add('active');
+            var projetName = this.getAttribute('data-projet');
+            updateHeuresTable(projetName);
+            // Mettre à jour aussi le chart principal si besoin
+            if(typeof initializeCharts==='function') initializeCharts();
+        });
+    });
+});
+</script>
+        <div class="dashboard-body">
+            <div class="charts-area">
+                <div class="chart-card">
+                    <h5>Heures réelles vs Heures ajustées par projet</h5>
+                    <canvas id="hours-chart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 50px;">
+        <h3>Aucune donnée de calcul trouvée.</h3>
+        <p>Veuillez d'abord effectuer un calcul depuis la page 'Facturation SLR'.</p>
+        <a href="{% url 'facturation_slr' %}" class="btn btn-primary" style="background-color: var(--primary-color); color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Aller aux Calculs</a>
+    </div>
+    {% endif %}
+</div>
+<div id="tab-content-2" class="tab-content" style="display:none;">Contenu de l'analyse par employé</div>
+<div id="tab-content-3" class="tab-content" style="display:none;">Contenu avant/après ajustement</div>
+<div id="tab-content-4" class="tab-content" style="display:none;">Contenu du tableau interactif</div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* Style pour le select de filtre projet KPI */
+#kpi-projet-filter {background:#fff;border:1px solid #80C342;color:#343A40;}
+#kpi-projet-filter:focus {outline:2px solid #80C342;}
+
+/* Base styles */
+:root {
+    --primary-color: #80C342;
+    --text-dark: #343A40;
+    --text-muted: #6C757D;
+    --border-color: #E9ECEF;
+    --bg-light: #F4F6F8;
+    --bg-white: #FFFFFF;
+    --shadow-sm: 0 2px 5px rgba(0,0,0,0.05);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --spacing-xs: 8px;
+    --spacing-sm: 12px;
+    --spacing-md: 16px;
+    --spacing-lg: 20px;
+    --spacing-xl: 24px;
+}
+
+/* Tab styles */
+.tab-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-xl);
+    background: var(--bg-white);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-xl) 0;
+    box-shadow: var(--shadow-sm);
+}
+
+.tab {
+    background: none;
+    border: none;
+    color: var(--text-dark);
+    font-weight: 600;
+    font-size: 1rem;
+    padding: var(--spacing-xs) var(--spacing-lg);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.5px;
+}
+
+.tab.active, .tab:hover {
+    background: #e9f7df;
+    color: var(--primary-color);
+}
+
+.tab-content {
+    background: var(--bg-light);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: var(--spacing-xl);
+    margin-bottom: var(--spacing-xl);
+    font-size: 1.2rem;
+    color: var(--text-dark);
+}
+
+/* Dashboard content styles */
+.accueil-general-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+    font-family: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* KPI container and cards */
+.kpi-container {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.kpi-card {
+    flex: 1;
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.kpi-card h4 {
+    margin: 0 0 var(--spacing-xs) 0;
+    font-size: 14px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.kpi-card p {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+/* Dashboard body layout */
+.dashboard-body {
+    display: flex;
+    gap: var(--spacing-xl);
+}
+
+/* Project list styles */
+.libelle-projet-list {
+    flex: 0 0 30%;
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    height: fit-content;
+}
+
+.libelle-projet-list h4 {
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: 16px;
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+#projetList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.projet-list-item {
+    padding: var(--spacing-sm) var(--spacing-md);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-dark);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-xs);
+    transition: all 0.2s ease;
+}
+
+.projet-list-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.projet-list-item:hover {
+    background-color: #f8f9fa;
+}
+
+.projet-list-item.active {
+    background-color: var(--primary-color);
+    color: var(--bg-white);
+    font-weight: 500;
+}
+
+/* Charts area styles */
+.charts-area {
+    flex: 0 0 70%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+}
+
+.chart-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    height: 350px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.chart-card h5 {
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: 16px;
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+/* Chart.js customization */
+.chart-card canvas {
+    width: 100% !important;
+    height: 280px !important;
+    max-height: 100% !important;
+    display: block;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{% if data_available %}
+    {{ projects_data_json_from_view|json_script:"allProjectsData" }}
+{% endif %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabNumber = this.getAttribute('data-tab');
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            const selectedContent = document.getElementById('tab-content-' + tabNumber);
+            if (selectedContent) {
+                selectedContent.style.display = 'block';
+            }
+            tabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+    document.querySelector('.tab[data-tab="1"]').click();
+});
+</script>
+{% if data_available %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded: Dynamic dashboard JS running');
+    const allProjectsData = JSON.parse(document.getElementById('allProjectsData').textContent);
+    console.log('allProjectsData:', allProjectsData);
+    const projetListItems = document.querySelectorAll('.projet-list-item');
+    const libelleProjets = Object.keys(allProjectsData);
+    console.log('libelleProjets:', libelleProjets);
+    // Correction : sélectionne le premier projet qui existe vraiment dans le JSON
+    let selectedProjet = libelleProjets.find(p => allProjectsData[p] && allProjectsData[p].kpis) || libelleProjets[0];
+    console.log('selectedProjet (init):', selectedProjet, allProjectsData[selectedProjet]);
+
+    function formatK(val) {
+        if (typeof val !== 'number' || isNaN(val)) return '-';
+        return (val / 1000).toFixed(0) + 'K';
+    }
+    function formatPct(val) {
+        if (typeof val !== 'number' || isNaN(val)) return '0%';
+        return val.toFixed(2) + '%';
+    }
+
+    function updateKPIs(data) {
+        console.log('Updating KPIs with data:', data);
+        document.getElementById('kpi-nb-employes').textContent = (data && data.nbEmployes != null) ? data.nbEmployes : '-';
+        document.getElementById('kpi-budget-estime').textContent = formatK(data && data.totalBudgetEstime);
+        document.getElementById('kpi-adjusted-cost').textContent = formatK(data && data.totalAdjustedCost);
+        document.getElementById('kpi-ecart').textContent = formatK(data && data.totalEcart);
+        document.getElementById('kpi-pct-ajustement').textContent = formatPct(data && data.pctAjustement);
+        document.getElementById('kpi-json-debug').textContent = JSON.stringify(data, null, 2);
+        console.log('KPIs updated');
+    }
+
+    // --- Filtre dynamique par boutons projet (header en haut) ---
+    const projetBtns = document.querySelectorAll('.kpi-projet-btn');
+    const kpiHeaderRows = document.querySelectorAll('#kpi-header-zone .kpi-header-row');
+    projetBtns.forEach(btn => {
+      btn.addEventListener('click', function() {
+        projetBtns.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const val = this.getAttribute('data-projet');
+        kpiHeaderRows.forEach(row => {
+          if (row.getAttribute('data-projet') === val) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+        // Cache aussi toutes les lignes du tableau récap (si elles existent encore)
+        document.querySelectorAll('.kpi-table-cards .kpi-card-row').forEach(row => row.style.display = 'none');
+      });
+    });
+    // Affichage initial : seul le premier projet dans le header
+    (function() {
+      const firstProjet = projetBtns[0]?.getAttribute('data-projet');
+      kpiHeaderRows.forEach(row => {
+        if (row.getAttribute('data-projet') === firstProjet) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      // Cache aussi toutes les lignes du tableau récap (si elles existent encore)
+      document.querySelectorAll('.kpi-table-cards .kpi-card-row').forEach(row => row.style.display = 'none');
+    })();
+
+
+    function initializeCharts() {
+        console.log('=== SIMPLE CHART INITIALIZATION START ===');
+        console.log('Available projects:', Object.keys(allProjectsData));
+        
+        // Get all project names and hours data
+        const projectNames = Object.keys(allProjectsData);
+        const heuresReellesData = [];
+        const heuresAjusteesData = [];
+        
+        console.log('Processing projects for chart...');
+        projectNames.forEach(projet => {
+            const kpis = allProjectsData[projet]?.kpis || {};
+            const heuresReelles = kpis.heuresReelles || 0;
+            const heuresAjustees = kpis.heuresAjustees || 0;
+            heuresReellesData.push(heuresReelles);
+            heuresAjusteesData.push(heuresAjustees);
+            console.log(`${projet}: Réelles=${heuresReelles}, Ajustées=${heuresAjustees}`);
+        });
+        
+        console.log('Final chart data:', {
+            labels: projectNames,
+            heuresReelles: heuresReellesData,
+            heuresAjustees: heuresAjusteesData
+        });
+        
+        // Get the canvas element
+        const canvas = document.getElementById('hours-chart');
+        if (!canvas) {
+            console.error('Chart canvas not found! Looking for element with id="hours-chart"');
+            return;
+        }
+        
+        console.log('Canvas found, creating chart...');
+        
+        // Create the chart
+        const hoursChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: projectNames,
+                datasets: [
+                    {
+                        label: 'Heures réelles',
+                        data: heuresReellesData,
+                        backgroundColor: '#80C342',
+                        borderColor: '#80C342',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Heures ajustées',
+                        data: heuresAjusteesData,
+                        backgroundColor: '#b6e687',
+                        borderColor: '#b6e687',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Heures réelles vs Heures ajustées par projet',
+                        font: { size: 16, weight: 'bold' }
+                    },
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#000',
+                            font: { family: 'Inter, sans-serif', size: 12 }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#000',
+                            font: { family: 'Inter, sans-serif' },
+                            maxRotation: 45
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#000',
+                            font: { family: 'Inter, sans-serif' }
+                        },
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Heures'
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('Chart created successfully!');
+        console.log('=== CHART INITIALIZATION END ===');
+        
+        // Update KPIs with overall data
+        const overallKpis = {
+            nbEmployes: {{ overall_kpis.nbEmployes|default:0 }},
+            totalBudgetEstime: {{ overall_kpis.totalBudgetEstime|default:0 }},
+            totalAdjustedCost: {{ overall_kpis.totalAdjustedCost|default:0 }},
+            totalEcart: {{ overall_kpis.totalEcart|default:0 }},
+            pctAjustement: {{ overall_kpis.pctAjustement|default:0 }}
+        };
+        updateKPIs(overallKpis);
+    }
+
+
+
+    // INITIALIZE CHARTS IMMEDIATELY ON PAGE LOAD
+    console.log('=== IMMEDIATE CHART INITIALIZATION ===');
+    if (Object.keys(allProjectsData).length > 0) {
+        console.log('Data available, initializing charts immediately...');
+        initializeCharts();
+    } else {
+        console.log('No data available for charts');
+    }
+
+    projetListItems.forEach(item => {
+        item.addEventListener('click', function() {
+            console.log('Project list item clicked:', this);
+            projetListItems.forEach(li => li.classList.remove('active'));
+            this.classList.add('active');
+            const selected = this.getAttribute('data-projet');
+            console.log('Selected project from data-attribute:', selected);
+            selectedProjet = selected;
+            console.log('About to initialize charts for:', selectedProjet);
+            initializeCharts();
+        });
+    });
+});
+</script>
+{% endif %}
+{% endblock %} 

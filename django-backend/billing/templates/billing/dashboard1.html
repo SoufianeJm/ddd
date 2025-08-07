@@ -1,0 +1,1681 @@
+{% extends "billing/base.html" %}
+
+{% block title %}Tableau de Bord 1 - Analytiques{% endblock %}
+
+{% block page_title %}Tableau de Bord 1{% endblock %}
+
+{% block content %}
+<div class="dashboard1-container">
+    {% if data_available %}
+        <!-- KPI Cards Section - Top of Page -->
+        <div class="kpi-cards-grid">
+            <!-- 1. Écart Final Projet (vs Estimé) -->
+            <div class="kpi-card {% if overall_kpis.ecartFinalProjet >= 0 %}kpi-positive{% else %}kpi-negative{% endif %}">
+                <div class="kpi-icon">📊</div>
+                <div class="kpi-content">
+                    <h3>{% if overall_kpis.ecartFinalProjet >= 0 %}+{% endif %}{{ overall_kpis.ecartFinalProjet|floatformat:0|default:0 }}€</h3>
+                    <p>Écart Final Projet</p>
+                </div>
+            </div>
+            
+            <!-- 2. Coût DES Projet -->
+            <div class="kpi-card">
+                <div class="kpi-icon">💼</div>
+                <div class="kpi-content">
+                    <h3>{{ overall_kpis.coutDesProjet|floatformat:0|default:0 }}€</h3>
+                    <p>Coût DES Projet</p>
+                </div>
+            </div>
+            
+            <!-- 3. Marge DES (Budget - Coût DES) -->
+            <div class="kpi-card {% if overall_kpis.margeDes >= 0 %}kpi-positive{% else %}kpi-negative{% endif %}">
+                <div class="kpi-icon">💰</div>
+                <div class="kpi-content">
+                    <h3>{% if overall_kpis.margeDes >= 0 %}+{% endif %}{{ overall_kpis.margeDes|floatformat:0|default:0 }}€</h3>
+                    <p>Marge DES</p>
+                </div>
+            </div>
+            
+            <!-- 4. Taux de Dépassement (%) -->
+            <div class="kpi-card {% if overall_kpis.tauxDepassement >= 0 %}kpi-positive{% else %}kpi-negative{% endif %}">
+                <div class="kpi-icon">📈</div>
+                <div class="kpi-content">
+                    <h3>{% if overall_kpis.tauxDepassement >= 0 %}+{% endif %}{{ overall_kpis.tauxDepassement|floatformat:1|default:"N/A" }}%</h3>
+                    <p>Taux de Dépassement</p>
+                </div>
+            </div>
+            
+            <!-- 5. Nombre de Projets Déficitaires -->
+            <div class="kpi-card {% if overall_kpis.projetsDeficitaires > 0 %}kpi-warning{% else %}kpi-success{% endif %}">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-content">
+                    <h3>{{ overall_kpis.projetsDeficitaires|default:0 }}</h3>
+                    <p>Projets Déficitaires</p>
+                </div>
+            </div>
+            
+            <!-- 6. Budget Total Missions -->
+            <div class="kpi-card">
+                <div class="kpi-icon">📋</div>
+                <div class="kpi-content">
+                    <h3>{{ overall_kpis.totalBudgetMissions|floatformat:0|default:0 }}€</h3>
+                    <p>Budget Total Missions</p>
+                </div>
+            </div>
+            
+            <!-- 7. Économies Réalisées (Heures réelles - Heures ajustées * Taux moyen) -->
+            <div class="kpi-card kpi-positive">
+                <div class="kpi-icon">💰</div>
+                <div class="kpi-content">
+                    <h3>+{{ overall_kpis.economiesRealisees|floatformat:0|default:0 }}€</h3>
+                    <p>Économies Réalisées</p>
+                </div>
+            </div>
+            
+            <!-- 8. Taux d'Optimisation (%) -->
+            <div class="kpi-card {% if overall_kpis.tauxOptimisation|default:0 >= 0 %}kpi-positive{% else %}kpi-negative{% endif %}">
+                <div class="kpi-icon">⚡</div>
+                <div class="kpi-content">
+                    <h3>{% if overall_kpis.tauxOptimisation|default:0 >= 0 %}+{% endif %}{{ overall_kpis.tauxOptimisation|floatformat:1|default:"0.0" }}%</h3>
+                    <p>Taux d'Optimisation</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Action Buttons Section 
+        <div class="action-buttons-section">
+            <div class="action-buttons-container">
+                <h3>📊 Actions Rapides</h3>
+                <div class="action-buttons-grid">
+                    {% if data_available %}
+                        <!-- Download Report Button 
+                        <a href="{% url 'download_slr_report' run_id=last_slr_run_id filename='latest_run.xlsx' %}" 
+                           class="action-btn download-btn" 
+                           title="Télécharger le rapport SLR">
+                            <div class="action-btn-icon">📥</div>
+                            <div class="action-btn-content">
+                                <h4>Télécharger Rapport</h4>
+                                <p>Exporter le rapport Excel complet</p>
+                            </div>
+                        </a>
+                        
+                        <!-- Export Data Button 
+                        <a href="{% url 'export_all_tables_json' %}" 
+                           class="action-btn export-btn" 
+                           title="Exporter les données JSON" 
+                           target="_blank">
+                            <div class="action-btn-icon">📤</div>
+                            <div class="action-btn-content">
+                                <h4>Exporter Données</h4>
+                                <p>Exporter en format JSON</p>
+                            </div>
+                        </a>
+                        
+                        <!-- Adjust Report Button 
+                        <a href="{% url 'edit_slr_adjustments' run_id=last_slr_run_id %}" 
+                           class="action-btn adjust-btn" 
+                           title="Ajuster le rapport SLR">
+                            <div class="action-btn-icon">⚙️</div>
+                            <div class="action-btn-content">
+                                <h4>Ajuster Rapport</h4>
+                                <p>Modifier les heures et coûts</p>
+                            </div>
+                        </a>
+                    {% else %}-->
+                    <!-- Report Actions Section -->
+                {% if download_url or adjust_url %}
+                <div class="report-actions-section">
+                    <h3>Actions du Rapport</h3>
+                    <div class="action-buttons">
+                        {% if download_url %}
+                        <a href="{{ download_url }}" class="btn btn-download">
+                            <i class="fas fa-download"></i>
+                            <span>Télécharger le Rapport</span>
+                        </a>
+                        {% endif %}
+                        {% if adjust_url %}
+                        <a href="{{ adjust_url }}" class="btn btn-adjust">
+                            <i class="fas fa-edit"></i>
+                            <span>Ajuster le Rapport</span>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                        <!-- No Data State -->
+                        <div class="action-btn disabled" title="Aucune donnée disponible">
+                            <div class="action-btn-icon">🚫</div>
+                            <div class="action-btn-content">
+                                <h4>Actions Non Disponibles</h4>
+                                <p>Générez d'abord un rapport SLR</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dashboard Layout with Sidebar -->
+        <div class="dashboard-layout">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <h3>Sélectionner un projet</h3>
+                <div class="project-list">
+                    <div class="project-item active" data-project="all">
+                        <span class="project-name">Tous les projets</span>
+                    </div>
+                    {% for projet in table_projets %}
+                    <div class="project-item" data-project="{{ forloop.counter0 }}">
+                        <span class="project-name">{{ projet.Libelle_projet }}</span>
+                        <span class="project-hours">{{ projet.Total_Heures|floatformat:0 }}h</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Chart Section -->
+        <div class="chart-section">
+            <div class="chart-container">
+                <h2>Heures réelles vs Heures ajustées par projet</h2>
+                <canvas id="hours-comparison-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Cost Chart Section -->
+        <div class="chart-section">
+            <div class="chart-container">
+                <h2>Budget Estimé vs Total par projet</h2>
+                <canvas id="cost-comparison-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Adjusted Cost vs Total Chart Section -->
+        <div class="chart-section">
+            <div class="chart-container">
+                <h2>Coût Ajusté vs Total par projet</h2>
+                <canvas id="adjusted-cost-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Strategic Analytics Section -->
+        <div class="strategic-analytics-section">
+            <div class="analytics-grid">
+                <!-- Project Budget Distribution Pie Chart -->
+                <div class="chart-section analytics-chart">
+                    <div class="chart-container">
+                        <h2>🎯 Répartition du Budget par Projet</h2>
+                        <p class="chart-subtitle">Quelle part du budget chaque projet représente</p>
+                        <canvas id="budget-distribution-pie"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Project Performance Donut Chart -->
+                <div class="chart-section analytics-chart">
+                    <div class="chart-container">
+                        <h2>📊 Performance des Projets (Écart)</h2>
+                        <p class="chart-subtitle">Projets rentables vs déficitaires - ACTION REQUISE</p>
+                        <canvas id="project-performance-donut"></canvas>
+                        <div class="performance-legend">
+                            <div class="legend-item profit">
+                                <span class="legend-color"></span>
+                                <span>Projets Rentables</span>
+                            </div>
+                            <div class="legend-item loss">
+                                <span class="legend-color"></span>
+                                <span>Projets Déficitaires - ATTENTION</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Critical Insights Section -->
+            <div class="analytics-grid">
+                <!-- Cost Efficiency Donut -->
+                <div class="chart-section analytics-chart">
+                    <div class="chart-container">
+                        <h2>⚡ Efficacité des Coûts par Projet</h2>
+                        <p class="chart-subtitle">Répartition des coûts ajustés - Optimisation possible</p>
+                        <canvas id="cost-efficiency-donut"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Hours Impact Pie -->
+                <div class="chart-section analytics-chart">
+                    <div class="chart-container">
+                        <h2>⏱️ Impact des Ajustements d'Heures</h2>
+                        <p class="chart-subtitle">Heures retirées par projet - Gains en productivité</p>
+                        <canvas id="hours-impact-pie"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Projects Summary Table (Hidden) -->
+        <div class="projects-table-section" style="display: none;">
+            <h2>Résumé des projets</h2>
+            <div class="table-responsive">
+                <table class="projects-table">
+                    <thead>
+                        <tr>
+                            <th>Projet</th>
+                            <th>Heures Réelles</th>
+                            <th>Heures Ajustées</th>
+                            <th>Budget Estimé</th>
+                            <th>Total</th>
+                            <th>Écart</th>
+                        </tr>
+                    </thead>
+                    <tbody id="projects-table-body">
+                        {% for projet in table_projets %}
+                        <tr>
+                            <td>{{ projet.Libelle_projet }}</td>
+                            <td>{{ projet.Total_Heures|floatformat:0 }}</td>
+                            <td>{{ projet.Adjusted_Hours|floatformat:0 }}</td>
+                            <td>{{ projet.Estimees|floatformat:0 }}€</td>
+                            <td>{{ projet.Adjusted_Cost|floatformat:0 }}€</td>
+                            <td>{{ projet.Ecart|floatformat:0 }}€</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #6b7280; font-style: italic;">
+                                Aucune donnée de projet disponible
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+            </div> <!-- End main-content -->
+        </div> <!-- End dashboard-layout -->
+    {% else %}
+        <!-- No Data Available State -->
+        <div class="no-data-state">
+            <div class="no-data-icon">📊</div>
+            <h2>Aucune donnée disponible</h2>
+            <p>Veuillez d'abord effectuer un calcul depuis la page "Calculer Facture".</p>
+            <a href="{% url 'facturation_slr' %}" class="btn-primary">
+                Aller aux calculs
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .dashboard1-container {
+        width: 100%;
+        padding: 20px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    
+    /* Dashboard Layout */
+    .dashboard-layout {
+        display: flex;
+        gap: 24px;
+        min-height: calc(100vh - 100px);
+    }
+    
+    /* Sidebar */
+    .sidebar {
+        width: 280px;
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+        height: fit-content;
+        position: sticky;
+        top: 20px;
+    }
+    
+    .sidebar h3 {
+        margin: 0 0 20px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        border-bottom: 2px solid #e5e7eb;
+        padding-bottom: 12px;
+    }
+    
+    .project-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .project-item {
+        padding: 12px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        background: #f9fafb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .project-item:hover {
+        background: #f3f4f6;
+        border-color: #d1d5db;
+    }
+    
+    .project-item.active {
+        background: #80C342;
+        color: white;
+        border-color: #6ba132;
+    }
+    
+    .project-name {
+        font-size: 14px;
+        font-weight: 500;
+        flex: 1;
+        margin-right: 8px;
+        word-break: break-word;
+    }
+    
+    .project-hours {
+        font-size: 12px;
+        opacity: 0.8;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    
+    /* Main Content */
+    .main-content {
+        flex: 1;
+        min-width: 0; /* Allow flex item to shrink */
+    }
+
+    /* KPI Cards */
+    .kpi-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+
+    .kpi-card {
+        background: white;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    .kpi-icon {
+        font-size: 24px;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f3f4f6;
+        border-radius: 6px;
+    }
+
+    .kpi-content h3 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: #1f2937;
+        line-height: 1;
+    }
+
+    .kpi-content p {
+        margin: 2px 0 0 0;
+        font-size: 12px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    /* KPI Card Color Indicators for Business Logic */
+    .kpi-card.kpi-positive {
+        border-left: 4px solid #10b981;
+    }
+
+    .kpi-card.kpi-positive .kpi-icon {
+        background: #d1fae5;
+        color: #10b981;
+    }
+
+    .kpi-card.kpi-positive .kpi-content h3 {
+        color: #059669;
+    }
+
+    .kpi-card.kpi-negative {
+        border-left: 4px solid #ef4444;
+    }
+
+    .kpi-card.kpi-negative .kpi-icon {
+        background: #fee2e2;
+        color: #ef4444;
+    }
+
+    .kpi-card.kpi-negative .kpi-content h3 {
+        color: #dc2626;
+    }
+
+    .kpi-card.kpi-warning {
+        border-left: 4px solid #f59e0b;
+    }
+
+    .kpi-card.kpi-warning .kpi-icon {
+        background: #fef3c7;
+        color: #f59e0b;
+    }
+
+    .kpi-card.kpi-warning .kpi-content h3 {
+        color: #d97706;
+    }
+
+    .kpi-card.kpi-success {
+        border-left: 4px solid #10b981;
+    }
+
+    .kpi-card.kpi-success .kpi-icon {
+        background: #d1fae5;
+        color: #10b981;
+    }
+
+    .kpi-card.kpi-success .kpi-content h3 {
+        color: #059669;
+    }
+
+    /* Chart Section */
+    .chart-section {
+        margin-bottom: 40px;
+    }
+
+    .chart-container {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+        position: relative;
+        height: 450px;
+    }
+
+    .chart-container h2 {
+        margin: 0 0 20px 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    #hours-comparison-chart {
+        max-height: 400px;
+        height: 400px;
+    }
+    
+    #cost-comparison-chart {
+        max-height: 400px;
+        height: 400px;
+    }
+    
+    #adjusted-cost-chart {
+        max-height: 400px;
+        height: 400px;
+    }
+    
+    /* Strategic Analytics Section */
+    .strategic-analytics-section {
+        margin-top: 40px;
+        padding: 20px 0;
+    }
+    
+    .analytics-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 32px;
+    }
+    
+    .analytics-chart {
+        margin-bottom: 0;
+    }
+    
+    .analytics-chart .chart-container {
+        height: 500px;
+        padding: 20px;
+    }
+    
+    .chart-subtitle {
+        color: #6b7280;
+        font-size: 14px;
+        margin: -10px 0 20px 0;
+        font-style: italic;
+    }
+    
+    /* Pie and Donut Charts */
+    #budget-distribution-pie,
+    #project-performance-donut,
+    #cost-efficiency-donut,
+    #hours-impact-pie {
+        max-height: 380px;
+        height: 380px;
+    }
+    
+    /* Performance Legend Styling */
+    .performance-legend {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    
+    .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: block;
+    }
+    
+    .legend-item.profit .legend-color {
+        background: #10b981;
+    }
+    
+    .legend-item.loss .legend-color {
+        background: #ef4444;
+    }
+
+    /* Projects Table */
+    .projects-table-section {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+    }
+
+    .projects-table-section h2 {
+        margin: 0 0 20px 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .projects-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    .projects-table th {
+        background: #f9fafb;
+        color: #374151;
+        font-weight: 600;
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 2px solid #e5e7eb;
+    }
+
+    .projects-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e7eb;
+        color: #1f2937;
+    }
+
+    .projects-table tr:hover {
+        background: #f9fafb;
+    }
+
+    .projects-table td:first-child {
+        font-weight: 600;
+        color: #80C342;
+    }
+
+    /* No Data State */
+    .no-data-state {
+        text-align: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+    }
+
+    .no-data-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+
+    .no-data-state h2 {
+        margin: 0 0 10px 0;
+        font-size: 24px;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .no-data-state p {
+        margin: 0 0 30px 0;
+        color: #6b7280;
+        font-size: 16px;
+    }
+
+    .btn-primary {
+        display: inline-block;
+        background: #80C342;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: background 0.2s ease;
+    }
+
+    .btn-primary:hover {
+        background: #6ba132;
+        color: white;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 1200px) {
+        .kpi-cards-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .dashboard1-container {
+            padding: 16px;
+        }
+
+        .kpi-cards-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .dashboard-layout {
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .sidebar {
+            width: 100%;
+            position: static;
+        }
+
+        .chart-container, .projects-table-section {
+            padding: 16px;
+        }
+
+        .kpi-card {
+            padding: 16px;
+        }
+
+        .kpi-card .kpi-icon {
+            font-size: 24px;
+            width: 48px;
+            height: 48px;
+        }
+
+        .kpi-content h3 {
+            font-size: 20px;
+        }
+
+        .kpi-content p {
+            font-size: 12px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .kpi-cards-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{% if data_available %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('=== SIMPLE CHART INIT START ===');
+        
+        // Use the table data directly - much simpler approach
+        const projectsTableData = [
+            {% for projet in table_projets %}
+            {
+                name: '{{ projet.Libelle_projet|escapejs }}',
+                realHours: {{ projet.Total_Heures|default:0 }},
+                adjustedHours: {{ projet.Adjusted_Hours|default:0 }},
+                budgetEstime: {{ projet.Estimees|default:0 }},
+                adjustedCost: {{ projet.Adjusted_Cost|default:0 }},
+                totalCost: {{ projet.Total|default:0 }}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+        
+        // Also get projects data with KPIs for totalRawCost
+        const projectsDataFromView = {{ projects_data_json_from_view|safe }};
+        
+        console.log('Chart data from table:', projectsTableData);
+        
+        // Extract data for chart
+        const projectNames = projectsTableData.map(p => p.name);
+        const realHours = projectsTableData.map(p => p.realHours);
+        const adjustedHours = projectsTableData.map(p => p.adjustedHours);
+        
+        // Extract totalRawCost from projects data KPIs
+        const totalRawCost = projectNames.map(name => {
+            const projectData = projectsDataFromView[name];
+            return projectData && projectData.kpis ? projectData.kpis.totalRawCost || 0 : 0;
+        });
+        
+        // Calculate Total Des and Total IBM from backend data
+        const totalDesData = projectNames.map(name => {
+            const projectData = projectsDataFromView[name];
+            return projectData && projectData.kpis ? projectData.kpis.totalDesCost || 0 : 0;
+        });
+        
+        const totalIbmData = projectNames.map(name => {
+            const projectData = projectsDataFromView[name];
+            return projectData && projectData.kpis ? projectData.kpis.totalIbmCost || 0 : 0;
+        });
+        
+        console.log('Project names:', projectNames);
+        console.log('Real hours:', realHours);
+        console.log('Adjusted hours:', adjustedHours);
+        
+        // Get canvas and create chart
+        const canvas = document.getElementById('hours-comparison-chart');
+        if (!canvas) {
+            console.error('Canvas not found!');
+            return;
+        }
+        
+        console.log('Canvas found, creating chart...');
+        
+        let hoursChart;
+        try {
+            hoursChart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: projectNames,
+                    datasets: [
+                        {
+                            label: 'Heures réelles',
+                            data: realHours,
+                            backgroundColor: '#80C342',
+                            borderColor: '#80C342',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Heures ajustées', 
+                            data: adjustedHours,
+                            backgroundColor: '#b6e687',
+                            borderColor: '#b6e687',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Heures réelles vs Heures ajustées par projet',
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 0
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Heures'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            console.log('✅ Hours chart created successfully!');
+            console.log('Hours chart object:', hoursChart);
+            
+        } catch (error) {
+            console.error('❌ Error creating hours chart:', error);
+        }
+        
+        // Create Cost Comparison Chart
+        console.log('=== COST CHART INIT START ===');
+        
+        const budgetEstime = projectsTableData.map(p => p.budgetEstime);
+        const adjustedCost = projectsTableData.map(p => p.adjustedCost);
+        // Use totalRawCost from projects data instead of totalCost from table
+        
+        // Calculate totals
+        const totalBudgetEstime = budgetEstime.reduce((sum, value) => sum + value, 0);
+        const totalAdjustedCost = adjustedCost.reduce((sum, value) => sum + value, 0);
+        const totalTotalRawCost = totalRawCost.reduce((sum, value) => sum + value, 0);
+        const totalEcart = totalBudgetEstime - totalAdjustedCost;
+        
+        console.log('Budget Estimé:', budgetEstime);
+        console.log('Adjusted Cost:', adjustedCost);
+        console.log('Total Raw Cost:', totalRawCost);
+        console.log('Total Budget Estimé:', totalBudgetEstime);
+        console.log('Total Adjusted Cost:', totalAdjustedCost);
+        console.log('Total Total Raw Cost:', totalTotalRawCost);
+        console.log('Total Écart:', totalEcart);
+        
+        // Debug individual project data
+        projectsTableData.forEach((project, index) => {
+            console.log(`Project ${index} - ${project.name}:`);
+            console.log(`  Budget Estimé: ${project.budgetEstime}`);
+            console.log(`  Adjusted Cost: ${project.adjustedCost}`);
+            console.log(`  Total Raw Cost: ${totalRawCost[index]}`);
+        });
+        
+        // Get canvas for cost chart
+        const costCanvas = document.getElementById('cost-comparison-chart');
+        if (!costCanvas) {
+            console.error('Cost canvas not found!');
+            return;
+        }
+        
+        console.log('Cost canvas found, creating cost chart...');
+        
+        let costChart;
+        try {
+            costChart = new Chart(costCanvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: projectNames,
+                    datasets: [
+                        {
+                            label: 'Budget Estimé',
+                            data: budgetEstime,
+                            backgroundColor: '#000000',
+                            borderColor: '#000000',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Total Des', 
+                            data: totalDesData,
+                            backgroundColor: '#C2EB79',
+                            borderColor: '#C2EB79',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Total', 
+                            data: totalIbmData,
+                            backgroundColor: '#86BC25',
+                            borderColor: '#86BC25',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Budget Estimé vs Total par projet',
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 0
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Total (€)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            console.log('✅ Cost chart created successfully!');
+            console.log('Cost chart object:', costChart);
+            
+        } catch (error) {
+            console.error('❌ Error creating cost chart:', error);
+        }
+        
+        // Create Adjusted Cost vs Total Chart
+        console.log('=== ADJUSTED COST CHART INIT START ===');
+        
+        // Get canvas for adjusted cost chart
+        const adjustedCostCanvas = document.getElementById('adjusted-cost-chart');
+        if (!adjustedCostCanvas) {
+            console.error('Adjusted cost canvas not found!');
+            return;
+        }
+        
+        console.log('Adjusted cost canvas found, creating adjusted cost chart...');
+        
+        let adjustedCostChart;
+        try {
+            adjustedCostChart = new Chart(adjustedCostCanvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: projectNames,
+                    datasets: [
+                        {
+                            label: 'Coût Ajusté',
+                            data: adjustedCost,
+                            backgroundColor: '#000000',
+                            borderColor: '#000000',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Total', 
+                            data: totalIbmData,
+                            backgroundColor: '#86BC25',
+                            borderColor: '#86BC25',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Coût Ajusté vs Total par projet',
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 0
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Coût (€)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            console.log('✅ Adjusted cost chart created successfully!');
+            console.log('Adjusted cost chart object:', adjustedCostChart);
+            
+        } catch (error) {
+            console.error('❌ Error creating adjusted cost chart:', error);
+        }
+        
+        // ============= STRATEGIC PIE & DONUT CHARTS =============
+        console.log('=== STRATEGIC CHARTS INIT START ===');
+        
+        // Define impressive color palette for charts
+        const strategicColors = {
+            profitable: ['#10b981', '#059669', '#047857', '#065f46', '#064e3b'],
+            deficit: ['#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d'],
+            mixed: ['#000000', '#374151', '#6b7280', '#9ca3af', '#d1d5db'],
+            accent: ['#86BC25', '#C2EB79', '#b6e687', '#a3d977', '#90cc66'],
+            warning: ['#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f']
+        };
+        
+        // Generate dynamic colors for projects
+        const projectColors = projectNames.map((_, index) => {
+            const colorSets = [strategicColors.accent, strategicColors.mixed, strategicColors.profitable];
+            const setIndex = index % colorSets.length;
+            const colorIndex = Math.floor(index / colorSets.length) % colorSets[setIndex].length;
+            return colorSets[setIndex][colorIndex];
+        });
+        
+        // 1. Budget Distribution Pie Chart
+        const budgetPieCanvas = document.getElementById('budget-distribution-pie');
+        let budgetPieChart;
+        if (budgetPieCanvas) {
+            try {
+                budgetPieChart = new Chart(budgetPieCanvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: projectNames,
+                        datasets: [{
+                            label: 'Budget Estimé',
+                            data: budgetEstime,
+                            backgroundColor: projectColors,
+                            borderColor: '#ffffff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    font: { size: 12 }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                        const percentage = ((context.raw / total) * 100).toFixed(1);
+                                        return `${context.label}: ${context.raw.toLocaleString()}€ (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('✅ Budget distribution pie chart created');
+            } catch (error) {
+                console.error('❌ Error creating budget pie chart:', error);
+            }
+        }
+        
+        // 2. Project Performance Donut Chart (Profitable vs Deficit)
+        const performanceDonutCanvas = document.getElementById('project-performance-donut');
+        let performanceDonutChart;
+        if (performanceDonutCanvas) {
+            try {
+                // Calculate project performance
+                const profitableProjects = [];
+                const deficitProjects = [];
+                
+                projectsTableData.forEach((project, index) => {
+                    const ecart = project.budgetEstime - project.adjustedCost;
+                    if (ecart >= 0) {
+                        profitableProjects.push({ name: project.name, value: project.budgetEstime });
+                    } else {
+                        deficitProjects.push({ name: project.name, value: project.budgetEstime });
+                    }
+                });
+                
+                const profitableSum = profitableProjects.reduce((sum, p) => sum + p.value, 0);
+                const deficitSum = deficitProjects.reduce((sum, p) => sum + p.value, 0);
+                
+                performanceDonutChart = new Chart(performanceDonutCanvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Projets Rentables', 'Projets Déficitaires'],
+                        datasets: [{
+                            label: 'Performance',
+                            data: [profitableSum, deficitSum],
+                            backgroundColor: ['#10b981', '#ef4444'],
+                            borderColor: '#ffffff',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '60%',
+                        plugins: {
+                            legend: {
+                                display: false // Using custom legend below
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                        const percentage = ((context.raw / total) * 100).toFixed(1);
+                                        const count = context.dataIndex === 0 ? profitableProjects.length : deficitProjects.length;
+                                        return `${context.label}: ${count} projets (${percentage}% du budget)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('✅ Project performance donut chart created');
+            } catch (error) {
+                console.error('❌ Error creating performance donut chart:', error);
+            }
+        }
+        
+        // 3. Cost Efficiency Donut Chart
+        const costEfficiencyCanvas = document.getElementById('cost-efficiency-donut');
+        let costEfficiencyChart;
+        if (costEfficiencyCanvas) {
+            try {
+                costEfficiencyChart = new Chart(costEfficiencyCanvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: projectNames,
+                        datasets: [{
+                            label: 'Coût Ajusté',
+                            data: adjustedCost,
+                            backgroundColor: projectColors,
+                            borderColor: '#ffffff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '50%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 12,
+                                    usePointStyle: true,
+                                    font: { size: 11 }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                        const percentage = ((context.raw / total) * 100).toFixed(1);
+                                        return `${context.label}: ${context.raw.toLocaleString()}€ (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('✅ Cost efficiency donut chart created');
+            } catch (error) {
+                console.error('❌ Error creating cost efficiency donut chart:', error);
+            }
+        }
+        
+        // 4. Hours Impact Pie Chart (Hours Saved)
+        const hoursImpactCanvas = document.getElementById('hours-impact-pie');
+        let hoursImpactChart;
+        if (hoursImpactCanvas) {
+            try {
+                // Calculate hours saved per project
+                const hoursSaved = projectsTableData.map(project => {
+                    const saved = Math.max(0, project.realHours - project.adjustedHours);
+                    return saved;
+                });
+                
+                // Filter out projects with no hours saved
+                const hoursImpactData = [];
+                const hoursImpactLabels = [];
+                const hoursImpactColors = [];
+                
+                hoursSaved.forEach((saved, index) => {
+                    if (saved > 0) {
+                        hoursImpactData.push(saved);
+                        hoursImpactLabels.push(projectNames[index]);
+                        hoursImpactColors.push(projectColors[index]);
+                    }
+                });
+                
+                if (hoursImpactData.length > 0) {
+                    hoursImpactChart = new Chart(hoursImpactCanvas.getContext('2d'), {
+                        type: 'pie',
+                        data: {
+                            labels: hoursImpactLabels,
+                            datasets: [{
+                                label: 'Heures Économisées',
+                                data: hoursImpactData,
+                                backgroundColor: hoursImpactColors,
+                                borderColor: '#ffffff',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        padding: 12,
+                                        usePointStyle: true,
+                                        font: { size: 11 }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                            const percentage = ((context.raw / total) * 100).toFixed(1);
+                                            return `${context.label}: ${context.raw}h économisées (${percentage}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    // Show message if no hours were saved
+                    hoursImpactCanvas.style.display = 'none';
+                    const container = hoursImpactCanvas.parentElement;
+                    container.innerHTML += '<div style="text-align: center; padding: 40px; color: #6b7280;">📈 Aucune heure économisée détectée</div>';
+                }
+                
+                console.log('✅ Hours impact pie chart created');
+            } catch (error) {
+                console.error('❌ Error creating hours impact chart:', error);
+            }
+        }
+        
+        console.log('=== STRATEGIC CHARTS INIT END ===');
+        console.log('=== ALL CHARTS INIT END ===');
+        
+        // Project filtering functionality
+        // hoursChart and costChart are already declared above
+        
+        // Add event listeners to project items
+        document.querySelectorAll('.project-item').forEach(item => {
+            item.addEventListener('click', function() {
+                // Remove active class from all items
+                document.querySelectorAll('.project-item').forEach(i => i.classList.remove('active'));
+                // Add active class to clicked item
+                this.classList.add('active');
+                
+                const selectedProject = this.dataset.project;
+                
+                if (selectedProject === 'all') {
+                    // Show all projects
+                    updateChartsWithAllProjects();
+                } else {
+                    // Show only selected project
+                    const projectIndex = parseInt(selectedProject);
+                    updateChartsWithSingleProject(projectIndex);
+                }
+            });
+        });
+        
+        function updateChartsWithAllProjects() {
+            // Update hours chart
+            hoursChart.data.labels = projectNames;
+            hoursChart.data.datasets[0].data = realHours;
+            hoursChart.data.datasets[1].data = adjustedHours;
+            hoursChart.options.plugins.title.text = 'Heures réelles vs Heures ajustées par projet';
+            hoursChart.update();
+            
+            // Update cost chart
+            costChart.data.labels = projectNames;
+            costChart.data.datasets[0].data = budgetEstime;
+            costChart.data.datasets[1].data = totalDesData;
+            costChart.data.datasets[2].data = totalIbmData;
+            costChart.options.plugins.title.text = 'Budget Estimé vs Total par projet';
+            costChart.update();
+            
+            // Update adjusted cost chart
+            adjustedCostChart.data.labels = projectNames;
+            adjustedCostChart.data.datasets[0].data = adjustedCost;
+            adjustedCostChart.data.datasets[1].data = totalIbmData;
+            adjustedCostChart.options.plugins.title.text = 'Coût Ajusté vs Total par projet';
+            adjustedCostChart.update();
+            
+            // Update strategic charts to show all projects
+            updateStrategicChartsWithAllProjects();
+            
+            // Update KPIs to show overall statistics
+            updateKPIsWithAllProjects();
+        }
+        
+        function updateChartsWithSingleProject(projectIndex) {
+            const selectedProjectData = projectsTableData[projectIndex];
+            
+            // Update hours chart
+            hoursChart.data.labels = [selectedProjectData.name];
+            hoursChart.data.datasets[0].data = [selectedProjectData.realHours];
+            hoursChart.data.datasets[1].data = [selectedProjectData.adjustedHours];
+            hoursChart.options.plugins.title.text = `Heures - ${selectedProjectData.name}`;
+            hoursChart.update();
+            
+            // Update cost chart
+            costChart.data.labels = [selectedProjectData.name];
+            costChart.data.datasets[0].data = [selectedProjectData.budgetEstime];
+            costChart.data.datasets[1].data = [totalDesData[projectIndex]];
+            costChart.data.datasets[2].data = [totalIbmData[projectIndex]];
+            costChart.options.plugins.title.text = `Total - ${selectedProjectData.name}`;
+            costChart.update();
+            
+            // Update adjusted cost chart
+            adjustedCostChart.data.labels = [selectedProjectData.name];
+            adjustedCostChart.data.datasets[0].data = [selectedProjectData.adjustedCost];
+            adjustedCostChart.data.datasets[1].data = [totalIbmData[projectIndex]];
+            adjustedCostChart.options.plugins.title.text = `Coût Ajusté vs Total - ${selectedProjectData.name}`;
+            adjustedCostChart.update();
+            
+            // Update strategic charts for single project
+            updateStrategicChartsWithSingleProject(projectIndex, selectedProjectData);
+            
+            // Update KPIs for the selected project
+            updateKPIsForSingleProject(selectedProjectData);
+        }
+        
+        function updateKPIsWithAllProjects() {
+            // Calculate overall KPIs from all projects
+            const totalBudget = projectsTableData.reduce((sum, p) => sum + p.budgetEstime, 0);
+            const totalAdjustedCost = projectsTableData.reduce((sum, p) => sum + p.adjustedCost, 0);
+            
+            // 1. Écart Final (Budget - Adjusted Cost)
+            const ecartFinal = totalBudget - totalAdjustedCost;
+            
+            // 2. Coût DES - Use original overall value or calculate if available
+            // For now, we'll use proportional estimation based on original data
+            const originalCoutDes = {{ overall_kpis.coutDesProjet|default:0 }};
+            
+            // 3. Marge DES (Budget - Coût DES)
+            const margeDes = totalBudget - originalCoutDes;
+            
+            // 4. Taux de Dépassement (%)
+            const tauxDepassement = totalBudget > 0 ? ((totalBudget - totalAdjustedCost) / totalBudget * 100) : 0;
+            
+            // 5. Nombre de Projets Déficitaires
+            const projetsDeficitaires = projectsTableData.filter(p => (p.budgetEstime - p.adjustedCost) < 0).length;
+            
+            // 6. Budget Total Missions (sum of all selected budgets)
+            const totalBudgetMissions = totalBudget;
+            
+            // 7. Économies Réalisées (based on hours saved * average hourly rate)
+            const totalHoursSaved = projectsTableData.reduce((sum, p) => sum + Math.max(0, p.realHours - p.adjustedHours), 0);
+            const averageHourlyRate = totalBudget > 0 && realHours.reduce((sum, h) => sum + h, 0) > 0 ? 
+                totalBudget / realHours.reduce((sum, h) => sum + h, 0) : 0;
+            const economiesRealisees = totalHoursSaved * averageHourlyRate;
+            
+            // 8. Taux d'Optimisation (% d'heures économisées)
+            const totalRealHours = realHours.reduce((sum, h) => sum + h, 0);
+            const totalAdjustedHours = adjustedHours.reduce((sum, h) => sum + h, 0);
+            const tauxOptimisation = totalRealHours > 0 ? ((totalRealHours - totalAdjustedHours) / totalRealHours * 100) : 0;
+            
+            updateKPICards({
+                ecartFinal: ecartFinal,
+                coutDes: originalCoutDes,
+                margeDes: margeDes,
+                tauxDepassement: tauxDepassement,
+                projetsDeficitaires: projetsDeficitaires,
+                totalBudgetMissions: totalBudgetMissions,
+                economiesRealisees: economiesRealisees,
+                tauxOptimisation: tauxOptimisation
+            });
+        }
+        
+        function updateKPIsForSingleProject(projectData) {
+            // Calculate KPIs for the selected project
+            
+            // 1. Écart Final Projet (Budget - Adjusted Cost)
+            const ecartFinal = projectData.budgetEstime - projectData.adjustedCost;
+            
+            // 2. Coût DES - Estimate based on ratio (simplified approach)
+            // In reality, this would need to be calculated from DES rates
+            const originalTotalBudget = {{ overall_kpis.totalBudgetEstime|default:1 }};
+            const originalCoutDes = {{ overall_kpis.coutDesProjet|default:0 }};
+            const projectCoutDes = originalTotalBudget > 0 ? (projectData.budgetEstime / originalTotalBudget) * originalCoutDes : 0;
+            
+            // 3. Marge DES (Budget - Coût DES)
+            const margeDes = projectData.budgetEstime - projectCoutDes;
+            
+            // 4. Taux de Dépassement (%)
+            const tauxDepassement = projectData.budgetEstime > 0 ? ((projectData.budgetEstime - projectData.adjustedCost) / projectData.budgetEstime * 100) : 0;
+            
+            // 5. Nombre de Projets Déficitaires (1 if this project is deficit, 0 otherwise)
+            const projetsDeficitaires = ecartFinal < 0 ? 1 : 0;
+            
+            // 6. Budget Total Missions (for selected project)
+            const totalBudgetMissions = projectData.budgetEstime;
+            
+            // 7. Économies Réalisées (for selected project)
+            const hoursSaved = Math.max(0, projectData.realHours - projectData.adjustedHours);
+            const projectHourlyRate = projectData.realHours > 0 ? projectData.budgetEstime / projectData.realHours : 0;
+            const economiesRealisees = hoursSaved * projectHourlyRate;
+            
+            // 8. Taux d'Optimisation (for selected project)
+            const tauxOptimisation = projectData.realHours > 0 ? ((projectData.realHours - projectData.adjustedHours) / projectData.realHours * 100) : 0;
+            
+            updateKPICards({
+                ecartFinal: ecartFinal,
+                coutDes: projectCoutDes,
+                margeDes: margeDes,
+                tauxDepassement: tauxDepassement,
+                projetsDeficitaires: projetsDeficitaires,
+                totalBudgetMissions: totalBudgetMissions,
+                economiesRealisees: economiesRealisees,
+                tauxOptimisation: tauxOptimisation
+            });
+        }
+        
+        function updateStrategicChartsWithAllProjects() {
+            // Reset all strategic charts to show all projects
+            
+            // 1. Budget Distribution Pie Chart - ALWAYS shows all projects (no changes needed)
+            // This chart maintains overview perspective regardless of filter
+            
+            // 2. Performance Donut Chart - recalculate for all projects
+            if (performanceDonutChart) {
+                const profitableProjects = [];
+                const deficitProjects = [];
+                
+                projectsTableData.forEach((project, index) => {
+                    const ecart = project.budgetEstime - project.adjustedCost;
+                    if (ecart >= 0) {
+                        profitableProjects.push({ name: project.name, value: project.budgetEstime });
+                    } else {
+                        deficitProjects.push({ name: project.name, value: project.budgetEstime });
+                    }
+                });
+                
+                const profitableSum = profitableProjects.reduce((sum, p) => sum + p.value, 0);
+                const deficitSum = deficitProjects.reduce((sum, p) => sum + p.value, 0);
+                
+                performanceDonutChart.data.datasets[0].data = [profitableSum, deficitSum];
+                performanceDonutChart.options.plugins.title.text = '📊 Performance des Projets (Écart)';
+                performanceDonutChart.update();
+            }
+            
+            // 3. Cost Efficiency Donut Chart - reset to all projects
+            if (costEfficiencyChart) {
+                costEfficiencyChart.data.labels = projectNames;
+                costEfficiencyChart.data.datasets[0].data = adjustedCost;
+                costEfficiencyChart.options.plugins.title.text = '⚡ Efficacité des Coûts par Projet';
+                costEfficiencyChart.update();
+            }
+            
+            // 4. Hours Impact Pie Chart - reset to all projects
+            if (hoursImpactChart) {
+                const hoursSaved = projectsTableData.map(project => {
+                    return Math.max(0, project.realHours - project.adjustedHours);
+                });
+                
+                const hoursImpactData = [];
+                const hoursImpactLabels = [];
+                const hoursImpactColors = [];
+                
+                hoursSaved.forEach((saved, index) => {
+                    if (saved > 0) {
+                        hoursImpactData.push(saved);
+                        hoursImpactLabels.push(projectNames[index]);
+                        hoursImpactColors.push(projectColors[index]);
+                    }
+                });
+                
+                hoursImpactChart.data.labels = hoursImpactLabels;
+                hoursImpactChart.data.datasets[0].data = hoursImpactData;
+                hoursImpactChart.options.plugins.title.text = '⏱️ Impact des Ajustements d\'Heures';
+                hoursImpactChart.update();
+            }
+        }
+        
+        function updateStrategicChartsWithSingleProject(projectIndex, selectedProjectData) {
+            // Update strategic charts to focus on single project
+            
+            // 1. Budget Distribution Pie Chart - ALWAYS shows all projects (no filtering)
+            // This chart maintains the complete budget overview for context
+            
+            // 2. Performance Donut Chart - show project performance
+            if (performanceDonutChart) {
+                const ecart = selectedProjectData.budgetEstime - selectedProjectData.adjustedCost;
+                const isProfit = ecart >= 0;
+                
+                const labels = isProfit ? ['Projet Rentable', 'Objectif Atteint'] : ['Projet Déficitaire', 'Action Requise'];
+                const values = [selectedProjectData.budgetEstime, Math.abs(ecart)];
+                const colors = isProfit ? ['#10b981', '#86BC25'] : ['#ef4444', '#f59e0b'];
+                
+                performanceDonutChart.data.labels = labels;
+                performanceDonutChart.data.datasets[0].data = values;
+                performanceDonutChart.data.datasets[0].backgroundColor = colors;
+                performanceDonutChart.options.plugins.title.text = `📊 Performance: ${selectedProjectData.name}`;
+                performanceDonutChart.update();
+            }
+            
+            // 3. Cost Efficiency Donut Chart - show project cost breakdown
+            if (costEfficiencyChart) {
+                const labels = ['Coût Ajusté', 'Écart Budget'];
+                const values = [selectedProjectData.adjustedCost, Math.max(0, selectedProjectData.budgetEstime - selectedProjectData.adjustedCost)];
+                const colors = ['#000000', '#86BC25'];
+                
+                costEfficiencyChart.data.labels = labels;
+                costEfficiencyChart.data.datasets[0].data = values;
+                costEfficiencyChart.data.datasets[0].backgroundColor = colors;
+                costEfficiencyChart.options.plugins.title.text = `⚡ Efficacité: ${selectedProjectData.name}`;
+                costEfficiencyChart.update();
+            }
+            
+            // 4. Hours Impact Pie Chart - show project hours breakdown
+            if (hoursImpactChart) {
+                const hoursSaved = Math.max(0, selectedProjectData.realHours - selectedProjectData.adjustedHours);
+                
+                if (hoursSaved > 0) {
+                    const labels = ['Heures Économisées', 'Heures Ajustées'];
+                    const values = [hoursSaved, selectedProjectData.adjustedHours];
+                    const colors = ['#86BC25', '#C2EB79'];
+                    
+                    hoursImpactChart.data.labels = labels;
+                    hoursImpactChart.data.datasets[0].data = values;
+                    hoursImpactChart.data.datasets[0].backgroundColor = colors;
+                    hoursImpactChart.options.plugins.title.text = `⏱️ Heures: ${selectedProjectData.name}`;
+                } else {
+                    // Show only adjusted hours if no savings
+                    hoursImpactChart.data.labels = ['Heures Ajustées'];
+                    hoursImpactChart.data.datasets[0].data = [selectedProjectData.adjustedHours];
+                    hoursImpactChart.data.datasets[0].backgroundColor = ['#C2EB79'];
+                    hoursImpactChart.options.plugins.title.text = `⏱️ Heures: ${selectedProjectData.name} (Aucune économie)`;
+                }
+                hoursImpactChart.update();
+            }
+        }
+        
+        function updateKPICards(kpis) {
+            // Update KPI card 1: Écart Final Projet
+            const ecartCard = document.querySelector('.kpi-card:nth-child(1)');
+            const ecartValue = ecartCard.querySelector('h3');
+            const ecartSign = kpis.ecartFinal >= 0 ? '+' : '';
+            ecartValue.textContent = `${ecartSign}${Math.round(kpis.ecartFinal)}€`;
+            
+            // Update card styling based on value
+            ecartCard.className = `kpi-card ${kpis.ecartFinal >= 0 ? 'kpi-positive' : 'kpi-negative'}`;
+            
+            // Update KPI card 2: Coût DES
+            const coutDesCard = document.querySelector('.kpi-card:nth-child(2)');
+            const coutDesValue = coutDesCard.querySelector('h3');
+            coutDesValue.textContent = `${Math.round(kpis.coutDes)}€`;
+            
+            // Update KPI card 3: Marge DES
+            const margeCard = document.querySelector('.kpi-card:nth-child(3)');
+            const margeValue = margeCard.querySelector('h3');
+            const margeSign = kpis.margeDes >= 0 ? '+' : '';
+            margeValue.textContent = `${margeSign}${Math.round(kpis.margeDes)}€`;
+            margeCard.className = `kpi-card ${kpis.margeDes >= 0 ? 'kpi-positive' : 'kpi-negative'}`;
+            
+            // Update KPI card 4: Taux de Dépassement
+            const tauxCard = document.querySelector('.kpi-card:nth-child(4)');
+            const tauxValue = tauxCard.querySelector('h3');
+            const tauxSign = kpis.tauxDepassement >= 0 ? '+' : '';
+            tauxValue.textContent = `${tauxSign}${kpis.tauxDepassement.toFixed(1)}%`;
+            tauxCard.className = `kpi-card ${kpis.tauxDepassement >= 0 ? 'kpi-positive' : 'kpi-negative'}`;
+            
+            // Update KPI card 5: Projets Déficitaires
+            const projetsCard = document.querySelector('.kpi-card:nth-child(5)');
+            const projetsValue = projetsCard.querySelector('h3');
+            projetsValue.textContent = kpis.projetsDeficitaires;
+            projetsCard.className = `kpi-card ${kpis.projetsDeficitaires > 0 ? 'kpi-warning' : 'kpi-success'}`;
+            
+            // Update KPI card 6: Budget Total Missions
+            const budgetMissionsCard = document.querySelector('.kpi-card:nth-child(6)');
+            if (budgetMissionsCard) {
+                const budgetMissionsValue = budgetMissionsCard.querySelector('h3');
+                const totalBudgetMissions = kpis.totalBudgetMissions || 0;
+                budgetMissionsValue.textContent = `${Math.round(totalBudgetMissions)}€`;
+            }
+            
+            // Update KPI card 7: Économies Réalisées
+            const economiesCard = document.querySelector('.kpi-card:nth-child(7)');
+            if (economiesCard) {
+                const economiesValue = economiesCard.querySelector('h3');
+                const economiesRealisees = kpis.economiesRealisees || 0;
+                economiesValue.textContent = `+${Math.round(economiesRealisees)}€`;
+            }
+            
+            // Update KPI card 8: Taux d'Optimisation
+            const tauxOptimisationCard = document.querySelector('.kpi-card:nth-child(8)');
+            if (tauxOptimisationCard) {
+                const tauxOptimisationValue = tauxOptimisationCard.querySelector('h3');
+                const tauxOptimisation = kpis.tauxOptimisation || 0;
+                const tauxOptimisationSign = tauxOptimisation >= 0 ? '+' : '';
+                tauxOptimisationValue.textContent = `${tauxOptimisationSign}${tauxOptimisation.toFixed(1)}%`;
+                tauxOptimisationCard.className = `kpi-card ${tauxOptimisation >= 0 ? 'kpi-positive' : 'kpi-negative'}`;
+            }
+        }
+        
+        console.log('✅ Project filtering functionality initialized');
+    });
+    </script>
+{% endif %}
+{% endblock %}

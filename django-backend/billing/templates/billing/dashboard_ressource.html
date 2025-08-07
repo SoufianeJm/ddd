@@ -1,0 +1,1036 @@
+{% extends "billing/base.html" %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}Tableau de Bord Ressources{% endblock %}
+
+{% block content %}
+    <div class="dashboard1-container">
+            {% if data_available %}
+                <!-- Report Actions Section -->
+                {% if download_url or adjust_url %}
+                <div class="report-actions-section">
+                    <h3>Actions du Rapport</h3>
+                    <div class="action-buttons">
+                        {% if download_url %}
+                        <a href="{{ download_url }}" class="btn btn-download">
+                            <i class="fas fa-download"></i>
+                            <span>Télécharger le Rapport</span>
+                        </a>
+                        {% endif %}
+                        {% if adjust_url %}
+                        <a href="{{ adjust_url }}" class="btn btn-adjust">
+                            <i class="fas fa-edit"></i>
+                            <span>Ajuster le Rapport</span>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- KPI Cards Section - Dynamic Employee-Specific Adjustment Recommendations -->
+                <div class="kpi-cards-grid" id="kpiCardsGrid">
+                <!-- These will be dynamically updated based on selected employee -->
+                <div class="kpi-card kpi-info" id="totalBudgetKpi">
+                    <div class="kpi-icon">💼</div>
+                    <div class="kpi-content">
+                        <h3 id="totalBudgetValue">{{ overall_kpis.totalBudget|floatformat:0|default:0 }}€</h3>
+                        <p>Budget Total (Estimés)</p>
+                        <small id="totalBudgetDesc">Tous projets confondus</small>
+                    </div>
+                </div>
+                
+                <div class="kpi-card kpi-warning" id="maxHoursToRemoveKpi">
+                    <div class="kpi-icon">⚡</div>
+                    <div class="kpi-content">
+                        <h3 id="maxHoursToRemoveValue">-</h3>
+                        <p>Max Heures à Retirer</p>
+                        <small id="maxHoursToRemoveDesc">Pour équilibrer budget</small>
+                    </div>
+                </div>
+                
+                <div class="kpi-card kpi-negative" id="removeFromProjectKpi">
+                    <div class="kpi-icon">📉</div>
+                    <div class="kpi-content">
+                        <h3 id="removeFromProjectValue">-</h3>
+                        <p>Retirer de</p>
+                        <small id="removeFromProjectDesc">Projet en dépassement</small>
+                    </div>
+                </div>
+                
+                <div class="kpi-card kpi-positive" id="missionBudgetKpi">
+                    <div class="kpi-icon">💰</div>
+                    <div class="kpi-content">
+                        <h3 id="missionBudgetValue">-</h3>
+                        <p>Budget Mission</p>
+                        <small id="missionBudgetDesc">Estimation actuelle</small>
+                    </div>
+                </div>
+                
+                <div class="kpi-card kpi-success" id="potentialSavingsKpi">
+                    <div class="kpi-icon">💰</div>
+                    <div class="kpi-content">
+                        <h3 id="potentialSavingsValue">-</h3>
+                        <p>Économies Estimées</p>
+                        <small id="potentialSavingsDesc">Après ajustement</small>
+                    </div>
+                </div>
+                
+                <div class="kpi-card kpi-info" id="employeeImpactKpi">
+                    <div class="kpi-icon">👤</div>
+                    <div class="kpi-content">
+                        <h3 id="employeeImpactValue">-</h3>
+                        <p>Impact Employé</p>
+                        <small id="employeeImpactDesc">Projets affectés</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Layout with Sidebar -->
+            <div class="dashboard-layout">
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <h3>Sélectionner un employé</h3>
+                    <div class="project-list">
+                        <div class="project-item active" data-employee="all">
+                            <span class="project-name">Tous les employés</span>
+                        </div>
+                        {% for employee in unique_employees %}
+                        <div class="project-item" data-employee="{{ employee|escapejs }}">
+                            <span class="project-name">{{ employee }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Main Content -->
+                <div class="main-content">
+                    <div class="chart-section">
+                        <div class="chart-container">
+                            <h2>Heures ajustées vs Heures totales par employé</h2>
+                            <canvas id="adjustedHoursChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-section">
+                        <div class="chart-container">
+                            <h2>Résumé Employés - Total & Total DES</h2>
+                            <canvas id="employeeSummaryChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-section">
+                        <div class="chart-container">
+                            <h2>Résumé Global - Total & Estimées par Projet</h2>
+                            <canvas id="globalSummaryChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-section">
+                        <div class="chart-container">
+                            <h2>Coût Ajusté vs Coût Total par Employé</h2>
+                            <canvas id="employeeCostChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <!-- No Data Available State -->
+            <div class="no-data-state">
+                <div class="no-data-icon">📊</div>
+                <h2>Aucune donnée disponible</h2>
+                <p>Veuillez d'abord effectuer un calcul depuis la page "Calculer Facture".</p>
+                <a href="{% url 'facturation_slr' %}" class="btn-primary">Calculer Facture</a>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.dashboard1-container {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: calc(100vh - 120px);
+}
+
+.dashboard-layout {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+}
+
+.sidebar {
+    width: 280px;
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    height: fit-content;
+    position: sticky;
+    top: 24px;
+}
+
+.sidebar h3 {
+    margin: 0 0 10px 0;
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 0.98rem;
+}
+
+.project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.project-item {
+    padding: 14px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+
+.project-item:hover {
+    background: #C2EB79;
+    border-color: #86BC25;
+}
+
+.project-item.active {
+    background: linear-gradient(135deg, #C2EB79, #86BC25);
+    color: #000000;
+    border-color: #86BC25;
+}
+
+.project-name {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.chart-section {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.chart-container {
+    position: relative;
+    height: 380px;
+}
+
+.chart-container h2 {
+    margin: 0 0 16px 0;
+    color: #2d3748;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.kpi-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.kpi-card {
+    background: white;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: transform 0.2s;
+    min-height: 80px;
+}
+
+.kpi-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-icon {
+    font-size: 1.8rem;
+    background: linear-gradient(135deg, #C2EB79, #86BC25);
+    color: #000000;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kpi-content h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    line-height: 1.2;
+}
+
+.kpi-content p {
+    margin: 2px 0 0 0;
+    color: #718096;
+    font-weight: 500;
+    font-size: 0.9rem;
+    line-height: 1.1;
+}
+
+.kpi-content small {
+    color: #a0aec0;
+    font-size: 0.7rem;
+    font-weight: 400;
+    line-height: 1.1;
+    margin-top: 1px;
+    display: block;
+}
+
+/* KPI Card Theme Colors */
+.kpi-positive .kpi-icon {
+    background: linear-gradient(135deg, #48bb78, #38a169);
+    color: white;
+}
+
+.kpi-negative .kpi-icon {
+    background: linear-gradient(135deg, #f56565, #e53e3e);
+    color: white;
+}
+
+.kpi-warning .kpi-icon {
+    background: linear-gradient(135deg, #ed8936, #dd6b20);
+    color: white;
+}
+
+.kpi-info .kpi-icon {
+    background: linear-gradient(135deg, #4299e1, #3182ce);
+    color: white;
+}
+
+.kpi-success .kpi-icon {
+    background: linear-gradient(135deg, #C2EB79, #86BC25);
+    color: #000000;
+}
+
+.no-data-state {
+    text-align: center;
+    padding: 50px 20px;
+    color: #718096;
+}
+
+.no-data-icon {
+    font-size: 3.5rem;
+    margin-bottom: 18px;
+    color: #cbd5e0;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #C2EB79, #86BC25);
+    color: #000000;
+    padding: 10px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 16px;
+    transition: all 0.2s;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(194, 235, 121, 0.3);
+    color: #000000;
+    text-decoration: none;
+}
+
+/* Report Actions Section */
+.report-actions-section {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid #86BC25;
+}
+
+.report-actions-section h3 {
+    margin: 0 0 16px 0;
+    color: #2d3748;
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.0rem;
+    transition: all 0.2s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-download {
+    background: linear-gradient(135deg, #C2EB79, #86BC25);
+    color: #000000;
+    box-shadow: 0 2px 8px rgba(194, 235, 121, 0.3);
+}
+
+.btn-download:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(194, 235, 121, 0.4);
+    color: #000000;
+    text-decoration: none;
+}
+
+.btn-adjust {
+    background: linear-gradient(135deg, #4299e1, #3182ce);
+    color: white;
+    box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+}
+
+.btn-adjust:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
+    color: white;
+    text-decoration: none;
+}
+
+.btn i {
+    font-size: 1.1rem;
+}
+
+.btn span {
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .dashboard-layout {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        position: static;
+    }
+    
+    .kpi-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js Library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const adjustedData = {{ adjusted_data_json|safe }};
+    const employeeSummary = {{ employee_summary_json|safe }};
+    const globalSummary = {{ global_summary_json|safe }};
+
+    let adjustedHoursChart, employeeSummaryChart, globalSummaryChart, employeeCostChart;
+
+    function initCharts() {
+        initAdjustedHoursChart();
+        initEmployeeSummaryChart();
+        initGlobalSummaryChart();
+        initEmployeeCostChart();
+    }
+
+    function initAdjustedHoursChart() {
+        const ctx = document.getElementById('adjustedHoursChart').getContext('2d');
+
+        if (adjustedHoursChart) {
+            adjustedHoursChart.destroy();
+        }
+
+        const data = adjustedData.map(row => ({
+            employee: row.Nom,
+            project: row.Libelle_projet,
+            totalHours: row.Total_Heures,
+            adjustedHours: row.Adjusted_Hours,
+            finalCoeff: row.final_coeff
+        }));
+
+        const labels = data.map(d => `${d.employee} - ${d.project}`);
+
+        adjustedHoursChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Hours',
+                    data: data.map(d => d.totalHours),
+                    backgroundColor: 'rgba(194, 235, 121, 0.6)',
+                    borderColor: 'rgba(194, 235, 121, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Adjusted Hours',
+                    data: data.map(d => d.adjustedHours),
+                    backgroundColor: 'rgba(134, 188, 37, 0.6)',
+                    borderColor: 'rgba(134, 188, 37, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hours'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Employee - Project'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function initEmployeeSummaryChart() {
+        const ctx = document.getElementById('employeeSummaryChart').getContext('2d');
+
+        if (employeeSummaryChart) {
+            employeeSummaryChart.destroy();
+        }
+
+        const data = employeeSummary.map(row => ({
+            employee: row.Nom,
+            project: row.Libelle_projet,
+            totalHours: row.Total_Heures,
+            total: row.Total,
+            totalDES: row.Total_DES
+        }));
+
+        const labels = data.map(d => `${d.employee} - ${d.project}`);
+
+        employeeSummaryChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total',
+                    data: data.map(d => d.total),
+                    backgroundColor: 'rgba(194, 235, 121, 0.6)',
+                    borderColor: 'rgba(194, 235, 121, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Total DES',
+                    data: data.map(d => d.totalDES),
+                    backgroundColor: 'rgba(134, 188, 37, 0.6)',
+                    borderColor: 'rgba(134, 188, 37, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hours / Cost'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Employee - Project'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function initGlobalSummaryChart() {
+        const ctx = document.getElementById('globalSummaryChart').getContext('2d');
+
+        if (globalSummaryChart) {
+            globalSummaryChart.destroy();
+        }
+
+        const data = globalSummary.map(row => ({
+            project: row.Libelle_projet,
+            totalHours: row.Total_Heures,
+            total: row.Total,
+            totalDES: row.Total_DES,
+            estimees: row.Estimees
+        }));
+
+        const labels = data.map(d => d.project);
+
+        globalSummaryChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total',
+                    data: data.map(d => d.total),
+                    backgroundColor: 'rgba(194, 235, 121, 0.6)',
+                    borderColor: 'rgba(194, 235, 121, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Total DES',
+                    data: data.map(d => d.totalDES),
+                    backgroundColor: 'rgba(134, 188, 37, 0.6)',
+                    borderColor: 'rgba(134, 188, 37, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Estimees',
+                    data: data.map(d => d.estimees),
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    borderColor: 'rgba(0, 0, 0, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Cost'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Project'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function initEmployeeCostChart() {
+        const ctx = document.getElementById('employeeCostChart').getContext('2d');
+
+        if (employeeCostChart) {
+            employeeCostChart.destroy();
+        }
+
+        // Calculate adjusted cost and total cost for each employee
+        const employeeCostData = {};
+        
+        // Process adjusted data to calculate costs
+        adjustedData.forEach(row => {
+            const employee = row.Nom;
+            if (!employeeCostData[employee]) {
+                employeeCostData[employee] = {
+                    totalCost: 0,
+                    adjustedCost: 0
+                };
+            }
+            // Assuming there's a rate per hour, we'll use the Total from employee summary as cost base
+        });
+        
+        // Process employee summary to get total costs
+        employeeSummary.forEach(row => {
+            const employee = row.Nom;
+            if (!employeeCostData[employee]) {
+                employeeCostData[employee] = {
+                    totalCost: 0,
+                    adjustedCost: 0
+                };
+            }
+            employeeCostData[employee].totalCost += row.Total || 0;
+        });
+        
+        // Calculate adjusted costs based on adjusted hours
+        adjustedData.forEach(row => {
+            const employee = row.Nom;
+            const totalHours = row.Total_Heures || 0;
+            const adjustedHours = row.Adjusted_Hours || 0;
+            
+            // Find corresponding cost rate from employee summary
+            const employeeSummaryRow = employeeSummary.find(es => es.Nom === employee && es.Libelle_projet === row.Libelle_projet);
+            if (employeeSummaryRow && totalHours > 0) {
+                const hourlyRate = (employeeSummaryRow.Total || 0) / totalHours;
+                employeeCostData[employee].adjustedCost += adjustedHours * hourlyRate;
+            }
+        });
+        
+        const employees = Object.keys(employeeCostData);
+        const totalCosts = employees.map(emp => employeeCostData[emp].totalCost);
+        const adjustedCosts = employees.map(emp => employeeCostData[emp].adjustedCost);
+
+        employeeCostChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: employees,
+                datasets: [{
+                    label: 'Total Cost',
+                    data: totalCosts,
+                    backgroundColor: 'rgba(194, 235, 121, 0.6)',
+                    borderColor: 'rgba(194, 235, 121, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Adjusted Cost',
+                    data: adjustedCosts,
+                    backgroundColor: 'rgba(134, 188, 37, 0.6)',
+                    borderColor: 'rgba(134, 188, 37, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Cost Comparison: Total vs Adjusted per Employee'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Cost (€)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Employee'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    document.querySelectorAll('.project-item').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.project-item').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const selectedEmployee = this.getAttribute('data-employee');
+            filterData(selectedEmployee);
+        });
+    });
+    function filterData(selectedEmployee) {
+        let filteredAdjustedData = adjustedData;
+        let filteredEmployeeSummary = employeeSummary;
+
+        if (selectedEmployee !== 'all') {
+            filteredAdjustedData = adjustedData.filter(row => row.Nom === selectedEmployee);
+            filteredEmployeeSummary = employeeSummary.filter(row => row.Nom === selectedEmployee);
+        }
+
+        // Update adjusted hours chart
+        const adjustedLabels = filteredAdjustedData.map(d => `${d.Nom} - ${d.Libelle_projet}`);
+        adjustedHoursChart.data.labels = adjustedLabels;
+        adjustedHoursChart.data.datasets[0].data = filteredAdjustedData.map(d => d.Total_Heures);
+        adjustedHoursChart.data.datasets[1].data = filteredAdjustedData.map(d => d.Adjusted_Hours);
+        adjustedHoursChart.update();
+
+        // Update employee summary chart
+        const employeeLabels = filteredEmployeeSummary.map(d => `${d.Nom} - ${d.Libelle_projet}`);
+        employeeSummaryChart.data.labels = employeeLabels;
+        employeeSummaryChart.data.datasets[0].data = filteredEmployeeSummary.map(d => d.Total);
+        employeeSummaryChart.data.datasets[1].data = filteredEmployeeSummary.map(d => d.Total_DES);
+        employeeSummaryChart.update();
+
+        // Update employee cost chart
+        updateEmployeeCostChart(filteredAdjustedData, filteredEmployeeSummary);
+
+        // Update KPIs based on selected employee
+        updateKPIs(selectedEmployee, filteredAdjustedData, filteredEmployeeSummary);
+    }
+
+    function updateEmployeeCostChart(filteredAdjustedData, filteredEmployeeSummary) {
+        // Calculate adjusted cost and total cost for filtered data
+        const employeeCostData = {};
+        
+        // Process employee summary to get total costs
+        filteredEmployeeSummary.forEach(row => {
+            const employee = row.Nom;
+            if (!employeeCostData[employee]) {
+                employeeCostData[employee] = {
+                    totalCost: 0,
+                    adjustedCost: 0
+                };
+            }
+            employeeCostData[employee].totalCost += row.Total || 0;
+        });
+        
+        // Calculate adjusted costs based on adjusted hours
+        filteredAdjustedData.forEach(row => {
+            const employee = row.Nom;
+            const totalHours = row.Total_Heures || 0;
+            const adjustedHours = row.Adjusted_Hours || 0;
+            
+            // Find corresponding cost rate from employee summary
+            const employeeSummaryRow = filteredEmployeeSummary.find(es => es.Nom === employee && es.Libelle_projet === row.Libelle_projet);
+            if (employeeSummaryRow && totalHours > 0) {
+                const hourlyRate = (employeeSummaryRow.Total || 0) / totalHours;
+                if (!employeeCostData[employee]) {
+                    employeeCostData[employee] = {
+                        totalCost: 0,
+                        adjustedCost: 0
+                    };
+                }
+                employeeCostData[employee].adjustedCost += adjustedHours * hourlyRate;
+            }
+        });
+        
+        const employees = Object.keys(employeeCostData);
+        const totalCosts = employees.map(emp => employeeCostData[emp].totalCost);
+        const adjustedCosts = employees.map(emp => employeeCostData[emp].adjustedCost);
+
+        // Update the chart data
+        employeeCostChart.data.labels = employees;
+        employeeCostChart.data.datasets[0].data = totalCosts;
+        employeeCostChart.data.datasets[1].data = adjustedCosts;
+        employeeCostChart.update();
+    }
+
+    function updateKPIs(selectedEmployee, filteredAdjustedData, filteredEmployeeSummary) {
+        // Calculate KPIs based on filtered data
+        let totalBudget = 0;
+        let totalActualCost = 0;
+        let totalHoursRemoved = 0;
+        let removeFromProject = 'N/A';
+        let potentialSavings = 0;
+        let employeeImpact = 'N/A';
+        let missionBudget = 0;
+        let missionBudgetDesc = 'Estimation actuelle';
+
+        // Calculate totals from filtered data
+        filteredEmployeeSummary.forEach(row => {
+            totalActualCost += row.Total || 0;
+        });
+
+        // Calculate total hours removed from filtered adjusted data
+        filteredAdjustedData.forEach(row => {
+            totalHoursRemoved += row.Heures_Retirées || 0;
+        });
+
+        // Get budget from global summary (estimees)
+        if (selectedEmployee === 'all') {
+            // Total budget for all projects
+            globalSummary.forEach(row => {
+                totalBudget += row.Estimees || 0;
+            });
+            missionBudget = totalBudget;
+            missionBudgetDesc = 'Toutes missions';
+        } else {
+            // Calculate proportional budget for specific employee
+            const employeeProjects = [...new Set(filteredEmployeeSummary.map(row => row.Libelle_projet))];
+            let employeeBudget = 0;
+            
+            employeeProjects.forEach(project => {
+                const globalProject = globalSummary.find(gs => gs.Libelle_projet === project);
+                if (globalProject) {
+                    // Get total cost for this project from all employees
+                    const projectTotalCostFromAll = employeeSummary
+                        .filter(es => es.Libelle_projet === project)
+                        .reduce((sum, es) => sum + (es.Total || 0), 0);
+                    
+                    // Get employee's cost for this project
+                    const employeeCostForProject = filteredEmployeeSummary
+                        .filter(es => es.Libelle_projet === project)
+                        .reduce((sum, es) => sum + (es.Total || 0), 0);
+                    
+                    // Calculate proportional budget
+                    if (projectTotalCostFromAll > 0) {
+                        const proportion = employeeCostForProject / projectTotalCostFromAll;
+                        employeeBudget += (globalProject.Estimees || 0) * proportion;
+                    }
+                }
+            });
+            
+            totalBudget = employeeBudget;
+            
+            // Set mission budget description
+            if (employeeProjects.length === 1) {
+                missionBudget = employeeBudget;
+                missionBudgetDesc = employeeProjects[0];
+            } else if (employeeProjects.length > 1) {
+                missionBudget = employeeBudget;
+                missionBudgetDesc = `${employeeProjects.length} missions`;
+            }
+        }
+
+        // Find project with highest cost relative to its budget (most problematic)
+        let worstProjectRatio = 0;
+        let worstProject = 'N/A';
+        
+        if (selectedEmployee === 'all') {
+            // Check all projects
+            globalSummary.forEach(globalProject => {
+                const projectBudget = globalProject.Estimees || 0;
+                const projectActualCost = employeeSummary
+                    .filter(es => es.Libelle_projet === globalProject.Libelle_projet)
+                    .reduce((sum, es) => sum + (es.Total || 0), 0);
+                
+                if (projectBudget > 0) {
+                    const ratio = projectActualCost / projectBudget;
+                    if (ratio > worstProjectRatio && ratio > 1) { // Only consider over-budget projects
+                        worstProjectRatio = ratio;
+                        worstProject = globalProject.Libelle_projet;
+                    }
+                }
+            });
+        } else {
+            // Check only employee's projects
+            const employeeProjects = [...new Set(filteredEmployeeSummary.map(row => row.Libelle_projet))];
+            employeeProjects.forEach(project => {
+                const globalProject = globalSummary.find(gs => gs.Libelle_projet === project);
+                if (globalProject) {
+                    const projectBudget = globalProject.Estimees || 0;
+                    const employeeCostForProject = filteredEmployeeSummary
+                        .filter(es => es.Libelle_projet === project)
+                        .reduce((sum, es) => sum + (es.Total || 0), 0);
+                    
+                    if (projectBudget > 0) {
+                        // For individual employee, we compare their cost to their proportional budget
+                        const projectTotalCost = employeeSummary
+                            .filter(es => es.Libelle_projet === project)
+                            .reduce((sum, es) => sum + (es.Total || 0), 0);
+                        
+                        if (projectTotalCost > 0) {
+                            const proportion = employeeCostForProject / projectTotalCost;
+                            const proportionalBudget = projectBudget * proportion;
+                            
+                            if (proportionalBudget > 0) {
+                                const ratio = employeeCostForProject / proportionalBudget;
+                                if (ratio > worstProjectRatio && ratio > 1) {
+                                    worstProjectRatio = ratio;
+                                    worstProject = project;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        removeFromProject = worstProject;
+
+        // Calculate potential savings
+        // Savings = difference between actual cost and budget (if over budget)
+        const overrun = totalActualCost - totalBudget;
+        potentialSavings = Math.max(0, overrun);
+
+        // Employee impact
+        if (selectedEmployee !== 'all') {
+            const projectCount = [...new Set(filteredEmployeeSummary.map(row => row.Libelle_projet))].length;
+            employeeImpact = `${projectCount} projet${projectCount > 1 ? 's' : ''}`;
+        } else {
+            const employeeCount = [...new Set(adjustedData.map(row => row.Nom))].length;
+            employeeImpact = `${employeeCount} employé${employeeCount > 1 ? 's' : ''}`;
+        }
+
+        // Update KPI elements with formatted values
+        document.getElementById('totalBudgetValue').textContent = `${Math.round(totalBudget).toLocaleString()}€`;
+        document.getElementById('maxHoursToRemoveValue').textContent = totalHoursRemoved > 0 ? `${Math.round(totalHoursRemoved)}h` : '0h';
+        document.getElementById('removeFromProjectValue').textContent = removeFromProject.length > 20 ? removeFromProject.substring(0, 17) + '...' : removeFromProject;
+        document.getElementById('missionBudgetValue').textContent = `${Math.round(missionBudget).toLocaleString()}€`;
+        document.getElementById('potentialSavingsValue').textContent = `${Math.round(potentialSavings).toLocaleString()}€`;
+        document.getElementById('employeeImpactValue').textContent = employeeImpact;
+
+        // Update descriptions dynamically
+        if (selectedEmployee !== 'all') {
+            document.getElementById('totalBudgetDesc').textContent = `Pour ${selectedEmployee}`;
+            document.getElementById('employeeImpactDesc').textContent = 'Projets impliqués';
+            document.getElementById('maxHoursToRemoveDesc').textContent = 'Heures retirées';
+            document.getElementById('removeFromProjectDesc').textContent = 'Priorité d\'ajustement';
+            document.getElementById('potentialSavingsDesc').textContent = 'Économies possibles';
+        } else {
+            document.getElementById('totalBudgetDesc').textContent = 'Tous projets confondus';
+            document.getElementById('employeeImpactDesc').textContent = 'Employés totaux';
+            document.getElementById('maxHoursToRemoveDesc').textContent = 'Pour équilibrer budget';
+            document.getElementById('removeFromProjectDesc').textContent = 'Projet en dépassement';
+            document.getElementById('potentialSavingsDesc').textContent = 'Après ajustement';
+        }
+        
+        document.getElementById('missionBudgetDesc').textContent = missionBudgetDesc;
+        
+        // Update KPI card colors based on performance
+        const totalBudgetCard = document.getElementById('totalBudgetKpi');
+        const potentialSavingsCard = document.getElementById('potentialSavingsKpi');
+        const removeFromProjectCard = document.getElementById('removeFromProjectKpi');
+        
+        // Reset classes
+        totalBudgetCard.className = 'kpi-card kpi-info';
+        potentialSavingsCard.className = 'kpi-card';
+        removeFromProjectCard.className = 'kpi-card';
+        
+        // Set colors based on performance
+        if (overrun > 0) {
+            totalBudgetCard.className = 'kpi-card kpi-warning'; // Over budget
+            potentialSavingsCard.className = 'kpi-card kpi-negative'; // Has potential savings (bad)
+            removeFromProjectCard.className = 'kpi-card kpi-negative'; // Needs attention
+        } else {
+            totalBudgetCard.className = 'kpi-card kpi-success'; // Under budget
+            potentialSavingsCard.className = 'kpi-card kpi-success'; // No overrun (good)
+            removeFromProjectCard.className = 'kpi-card kpi-info'; // No major issues
+        }
+    }
+
+    // Initialize with all employees on page load
+    initCharts();
+    updateKPIs('all', adjustedData, employeeSummary);
+});
+</script>
+
+{% endblock %}

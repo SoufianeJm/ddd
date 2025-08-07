@@ -1,0 +1,1324 @@
+{% extends "billing/base.html" %}
+{% load crispy_forms_tags %}
+{% load billing_extras %}
+
+{% block title %}Edit SLR Adjustments{% endblock %}
+{% block page_title %}Edit SLR Adjustments{% endblock %}
+
+{% block content %}
+<div class="facturation-stepper-horizontal">
+    <div id="stepper-alert" class="alert alert-warning" style="display:none;max-width:580px;margin:0 auto 1rem auto;"></div>
+    <div class="stepper-btn-bar">
+        <a href="/facturation/slr/" class="stepper-btn-link"><div class="stepper-btn completed">1<br><span>Importation</span></div></a>
+        <a href="/facturation/slr/" class="stepper-btn-link"><div class="stepper-btn completed">2<br><span>Résultats</span></div></a>
+        <div class="stepper-btn active">3<br><span>Modification</span></div>
+    </div>
+</div>
+<style>
+.facturation-stepper-horizontal {
+    max-width: 700px;
+    margin: 0 auto 0.2rem auto;
+    text-align: center;
+}
+.stepper-btn-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: center;
+    gap: 18px;
+    margin-bottom: 0;
+}
+.stepper-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-width: 170px;
+    min-height: 80px;
+    font-size: 1.45rem;
+    font-weight: 700;
+    background: #fff;
+    color: #7bb62d;
+    border-radius: 24px;
+    border: 2.2px solid #b7e4c7;
+    box-shadow: 0 4px 28px 0 rgba(128,195,66,0.10);
+    cursor: pointer;
+    transition: box-shadow 0.18s, border-color 0.18s, background 0.18s, color 0.18s;
+    margin-bottom: 0;
+    letter-spacing: 0.5px;
+    position: relative;
+    user-select: none;
+}
+.stepper-btn span {
+    font-size: 1.18rem;
+    font-weight: 600;
+    color: #5fa81e;
+    margin-top: 2px;
+    letter-spacing: 0.2px;
+}
+.stepper-btn.active {
+    background: linear-gradient(90deg, #e9f7df 60%, #d0f5b2 100%);
+    color: #4e8e1d;
+    border-color: #80C342;
+    box-shadow: 0 8px 32px 0 rgba(128,195,66,0.14);
+    z-index: 2;
+}
+.stepper-btn.active span {
+    color: #4e8e1d;
+}
+.stepper-btn.completed {
+    opacity: 1;
+    pointer-events: auto;
+    background: #fff;
+    color: #7bb62d;
+    border-color: #b7e4c7;
+    box-shadow: 0 4px 28px 0 rgba(128,195,66,0.10);
+}
+.stepper-btn.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    background: #f5f7fa;
+    color: #b3b3b3;
+    border-color: #e9ecef;
+    box-shadow: none;
+}
+.stepper-btn-link {
+    text-decoration: none;
+}
+.stepper-btn-link .stepper-btn:hover {
+    background: linear-gradient(90deg, #e3f3d0 60%, #d0f5b2 100%);
+    border-color: #80C342;
+    box-shadow: 0 12px 32px 0 rgba(128,195,66,0.16);
+    color: #4e8e1d;
+}
+
+/* Reduce space above title */
+.page-header {
+    margin-top: 0;
+    padding-top: 0.5rem;
+    margin-bottom: 1rem;
+}
+.edit-adjustments-wrapper {
+    padding-top: 0;
+    margin-top: 0;
+}
+.edit-adjustments-card {
+    margin-top: 0;
+}
+
+@media (max-width: 900px) {
+    .stepper-btn-bar { gap: 8px; }
+    .stepper-btn { min-width: 110px; font-size: 1.03rem; min-height: 60px; }
+}
+@media (max-width: 600px) {
+    .facturation-stepper-horizontal { max-width: 99vw; }
+    .stepper-btn-bar { flex-direction: column; gap: 12px; }
+    .stepper-btn { min-width: 90vw; font-size: 1.01rem; min-height: 48px; }
+}
+</style>
+
+
+    <div id="stepper-alert" class="alert alert-warning" style="display:none;max-width:420px;margin:0 auto 1rem auto;"></div>
+</div>
+<script>
+// Gestion des alertes personnalisées pour étapes inaccessibles
+(function() {
+    var stepper = document.querySelector('.facturation-stepper');
+    if (!stepper) return;
+    var alertBox = document.getElementById('stepper-alert');
+    var stepMessages = {
+        1: "Vous êtes déjà à l'étape d'importation.",
+        2: "Vous devez d'abord importer les fichiers pour accéder aux résultats.",
+        3: "Vous devez d'abord générer le rapport avant de pouvoir modifier les résultats."
+    };
+    stepper.addEventListener('click', function(e) {
+        var stepItem = e.target.closest('.step-disabled');
+        if (stepItem) {
+            var step = stepItem.getAttribute('data-step');
+            if (stepMessages[step]) {
+                alertBox.textContent = stepMessages[step];
+                alertBox.style.display = 'block';
+                setTimeout(function() { alertBox.style.display = 'none'; }, 4000);
+            }
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+})();
+</script>
+
+<div class="edit-adjustments-wrapper" style="margin-top: 0; padding-top: 0;">
+    <div class="edit-adjustments-card modern-adjustments-card" style="margin-top: 0;">
+        <div class="page-header">
+            <div class="step-title">
+                <h2><i class="fas fa-edit text-success me-2"></i><strong>Étape 3 :</strong> Modification des résultats</h2>
+                <p class="text-muted mb-0">Ajustez les heures et les coûts selon vos besoins</p>
+            </div>
+        </div>
+        
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>{{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        <div class="info-cards-container">
+            <div class="info-card">
+                <div class="info-card-icon">
+                    <i class="fas fa-file-excel"></i>
+                </div>
+                <div class="info-card-content">
+                    <h6>Fichier source</h6>
+                    <p>{{ original_filename }}</p>
+                </div>
+            </div>
+            <div class="info-card">
+                <div class="info-card-icon">
+                    <i class="fas fa-fingerprint"></i>
+                </div>
+                <div class="info-card-content">
+                    <h6>Run ID</h6>
+                    <p><code>{{ run_id|slice:":8" }}...</code></p>
+                </div>
+            </div>
+            {% if mois_filtre and annee_filtre %}
+            <div class="info-card">
+                <div class="info-card-icon">
+                    <i class="fas fa-calendar"></i>
+                </div>
+                <div class="info-card-content">
+                    <h6>Période</h6>
+                    <p>{{ mois_filtre }} {{ annee_filtre }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <form method="post" id="adjustmentsForm">
+            {% csrf_token %}
+            
+            <!-- Filters Bar -->
+            <div class="filters-bar">
+                <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                    <div class="form-group mb-0">
+                        <select id="filter-project" class="form-select form-select-sm">
+                            <option value="">Tous les projets</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-0">
+                        <select id="filter-employee" class="form-select form-select-sm">
+                            <option value="">Toutes les ressources</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-0">
+                        <button type="button" id="reset-filters" class="btn btn-outline-secondary btn-sm">
+                            Réinitialiser
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-section">
+                <div class="table-header">
+                    <div class="table-title">
+                        <i class="fas fa-table me-2"></i>
+                        <h5 class="mb-0">Ajustements détaillés</h5>
+                    </div>
+                    <div class="table-info">
+                        <span class="badge bg-light text-dark">{{ adjusted_df|length }} lignes</span>
+                        <small class="text-muted ms-2">Cliquez sur les cellules "Adjusted Hours" pour modifier</small>
+                    </div>
+                </div>
+                <div class="modern-table-wrapper">
+                    <table class="modern-table" id="adjustmentsTable" style="table-layout:fixed; width:100%; max-width:100%;">
+                        <thead class="modern-table-header">
+                            <tr>
+                                {% for col in columns %}
+                                    {% if col != 'ID' and col != 'PA_Adjusted_Hours' %}
+                                        <th>{{ col }}</th>
+                                    {% endif %}
+                                {% endfor %}
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in adjusted_df %}
+<tr data-row-id="{{ row.ID }}" data-libproj="{{ row|get_item:'Libelle projet'|escape }}" data-employee="{{ row.Nom|escape }}">
+                                    {% for col in columns %}
+                                        {% if col != 'ID' and col != 'PA_Adjusted_Hours' %}
+                                            {% if col == 'Adjusted Hours' %}
+                                                <td class="editable-adjusted-hours" data-original="{{ row|get_item:col }}">
+                                                    <span class="cell-value">{{ row|get_item:col }}</span>
+                                                </td>
+                                            {% elif col == 'Adjusted Cost' %}
+                                                <td class="adjusted-cost-cell">{{ row|get_item:col }}</td>
+                                            {% elif col == 'Heures Retirées' %}
+                                                <td class="heures-retires-cell">{{ row|get_item:col }}</td>
+                                            {% else %}
+                                                <td style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:60px; max-width:160px;">{% if row|get_item:col is number %}<span style="text-align:right;display:block;">{{ row|get_item:col }}</span>{% else %}{{ row|get_item:col }}{% endif %}</td>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    <td class="date-cell" data-project="{{ row|get_item:'Libelle projet'|escape }}" data-employee="{{ row.Nom|escape }}" title="Cliquez pour voir toutes les dates d'imputation">
+                                        <i class="fas fa-calendar-alt" style="color: #28a745; cursor: pointer;"></i>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #e0f2f1; font-weight: bold;">
+                            {% for col in columns %}
+                                {% if col != 'ID' and col != 'PA_Adjusted_Hours' %}
+                                    {% if col == 'Libelle projet' %}
+                                        <td style="text-align: right;"><strong>Totaux :</strong></td>
+                                    {% elif col == 'Nom' or col == 'Grade' %}
+                                        <td></td>
+                                    {% elif col == 'Total Heures' %}
+                                        <td id="total-total-heures" class="numeric"></td>
+                                    {% elif col == 'Rate' %}
+                                        <td></td>
+                                    {% elif col == 'Total' %}
+                                        <td id="total-total" class="numeric"></td>
+                                    {% elif col == 'Adjusted Hours' %}
+                                        <td id="total-adjusted-hours" class="numeric"></td>
+                                    {% elif col == 'Heures Retirées' %}
+                                        <td id="total-heures-retirees" class="numeric"></td>
+                                    {% elif col == 'Adjusted Cost' %}
+                                        <td id="total-adjusted-cost" class="numeric"></td>
+                                    {% elif col == 'Script_Calculated_Adjusted_Hours' %}
+                                        <td id="total-script-calculated-adjusted-hours" class="numeric"></td>
+                                    {% elif col == 'budget' %}
+                                        <td></td>
+                                    {% else %}
+                                        <td></td>
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                            <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Table_Résultats (Résultats Synthétiques) sous Table_Ajustements -->
+                <div class="table-section mt-4">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-chart-line me-2"></i>
+                            <h5 class="mb-0">Résumé par projet</h5>
+                        </div>
+                        <div class="table-info">
+                            <span class="badge bg-primary" id="summary-count-badge">{{ summary_df|length }} projets</span>
+                        </div>
+                    </div>
+                <div class="modern-table-wrapper">
+                        <table class="modern-table" id="summaryTable">
+                        <thead>
+                            <tr>
+                                {% for col in summary_columns %}
+                                    <th>{{ col }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in summary_df %}
+                                <tr data-project="{{ row|get_item:'Libelle projet'|escape }}">
+                                    {% for col in summary_columns %}
+                                        {% if row|get_item:col is number %}
+                                            <td class="numeric">{{ row|get_item:col }}</td>
+                                        {% else %}
+                                            <td>{{ row|get_item:col }}</td>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #e0f2f1; font-weight: bold;">
+                            {% for col in summary_columns %}
+                                {% if forloop.first %}
+                                    <td style="text-align: right;"><strong>Totaux :</strong></td>
+                                {% elif col == 'Total Heures' %}
+                                    <td id="summary-total-heures" class="numeric"></td>
+                                {% elif col == 'Adjusted Hours' %}
+                                    <td id="summary-total-adjusted-hours" class="numeric"></td>
+                                {% elif col == 'Heures Retirées' %}
+                                    <td id="summary-total-heures-retirees" class="numeric"></td>
+                                {% elif col == 'Adjusted Cost' %}
+                                    <td id="summary-total-adjusted-cost" class="numeric"></td>
+                                {% elif col == 'Estimees' %}
+                                    <td id="summary-total-estimees" class="numeric"></td>
+                                {% elif col == 'Ecart' %}
+                                    <td id="summary-total-ecart" class="numeric"></td>
+                                {% else %}
+                                    <td></td>
+                                {% endif %}
+                            {% endfor %}
+                            </tr>
+                        </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="action-buttons-section">
+                <div class="action-buttons-container">
+                    <button type="submit" class="btn btn-primary btn-lg" id="saveAdjustmentsBtn">
+                        <i class="fas fa-save me-2"></i>Enregistrer les modifications
+                    </button>
+                    {% if updated_filename %}
+                        <a href="{% url 'download_slr_report' run_id=run_id filename=updated_filename %}" class="btn btn-outline-success btn-lg">
+                            <i class="fas fa-download me-2"></i>Télécharger le rapport mis à jour
+                        </a>
+                    {% else %}
+                        <button type="button" class="btn btn-outline-secondary btn-lg" disabled title="Enregistrez d'abord vos modifications pour générer un rapport mis à jour">
+                            <i class="fas fa-download me-2"></i>Télécharger le rapport
+                        </button>
+                    {% endif %}
+                    <a href="{% url 'download_ibm_report' run_id=run_id %}" class="btn btn-outline-primary btn-lg">
+                        <i class="fas fa-file-excel me-2"></i>Télécharger le rapport version IBM
+                    </a>
+                    <a href="{% url 'dashboard_resources' %}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fas fa-arrow-left me-2"></i>Retour au dashboard
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Table_Résultats (04_Result) -->
+    <!--<div class="card mt-5" style="box-shadow:0 3px 12px rgba(128,195,66,0.08);border-radius:16px;">
+        <div class="card-header bg-primary text-white" style="border-radius:16px 16px 0 0;">
+            <h5 class="mb-0">Table_Résultats (04_Result)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            {% for column in summary_columns %}
+                                <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in summary_df %}
+                            <tr>
+                                {% for column in summary_columns %}
+                                    <td>{{ row|get_item:column }}</td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>-->
+
+<style>
+.facturation-stepper-container {
+    max-width: 520px;
+    margin: 0 auto 2.2rem auto;
+    text-align: center;
+}
+.facturation-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.7rem;
+}
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 2px 12px 0 rgba(128,195,66,0.06);
+    border: 1.5px solid #e9ecef;
+    padding: 0.45rem 1.2rem 0.3rem 1.2rem;
+    min-width: 100px;
+    position: relative;
+    transition: box-shadow 0.18s, border-color 0.18s;
+    color: #222;
+    font-weight: 600;
+    font-size: 1.01rem;
+}
+.step-item.active {
+    cursor: default;
+
+    background: linear-gradient(90deg, #e9f7df 60%, #d0f5b2 100%);
+    color: #4e8e1d;
+    border-color: #80C342;
+    box-shadow: 0 4px 16px 0 rgba(128,195,66,0.10);
+    font-weight: 700;
+    z-index: 2;
+}
+.step-item.completed {
+    color: #80C342;
+    border-color: #b7e4c7;
+}
+.step-index {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    border-radius: 50%;
+    background: #f4f6f8;
+    color: #80C342;
+    font-weight: 700;
+    font-size: 1.1rem;
+    border: 1.5px solid #e9ecef;
+    margin-bottom: 0.15rem;
+}
+.step-item.active .step-index {
+    background: #80C342;
+    color: #fff;
+    border-color: #80C342;
+}
+.step-separator {
+    width: 36px;
+    height: 3px;
+    background: linear-gradient(90deg, #e9ecef 60%, #d0f5b2 100%);
+    border-radius: 2px;
+    margin: 0 2px;
+}
+.step-title {
+    font-size: 1.17rem;
+    color: #343a40;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+    letter-spacing: 0.1px;
+}
+.step-link { text-decoration: none; }
+.step-link .step-item {
+    cursor: pointer;
+    transition: box-shadow 0.18s, border-color 0.18s, background 0.16s;
+}
+.step-link .step-item:hover {
+    background: linear-gradient(90deg, #e3f3d0 60%, #d0f5b2 100%);
+    border-color: #80C342;
+    box-shadow: 0 6px 20px 0 rgba(128,195,66,0.13);
+    color: #4e8e1d;
+}
+.step-disabled { opacity: 0.6; pointer-events: auto; cursor: not-allowed; }
+.step-disabled:hover { background: #f4f6f8; color: #888; border-color: #e9ecef; box-shadow: none; }
+@media (max-width: 600px) {
+    .facturation-stepper {
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+    .step-item {
+        min-width: 80px;
+        font-size: 0.97rem;
+        padding: 0.3rem 0.5rem 0.2rem 0.5rem;
+    }
+    .step-separator {
+        width: 16px;
+        height: 3px;
+        margin: 0 1px;
+    }
+    .step-title {
+        font-size: 1.04rem;
+    }
+}
+
+    /* Style uniforme pour tous les tableaux de la page (Table_Résultats et Table_Ajustements) */
+    .modern-table-wrapper {
+        max-height: 420px;
+        overflow-y: auto;
+        overflow-x: auto;
+        padding: 0.2rem 0.2rem 0.7rem 0.2rem;
+        border-radius: 7px;
+        border: 1px solid #e0e0e0;
+        background: #fcfcfc;
+    }
+    .modern-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        min-width: 600px;
+        font-size: 0.97em;
+        background: #fff;
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+        table-layout: auto;
+    }
+    .modern-table th {
+    background: #e9f7df;
+    color: #222;
+    padding: 0.40rem 0.35rem;
+    border-bottom: 2px solid #b7e4c7;
+    border-top: 1px solid #b7e4c7;
+    border-right: 1px solid #e0e0e0;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    font-size: 0.96em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+    .modern-table th:last-child {
+        border-right: none;
+    }
+    .modern-table td {
+        padding: 0.36rem 0.42rem;
+        border-bottom: 1px solid #e0e0e0;
+        border-right: 1px solid #e0e0e0;
+        background: #fff;
+        font-size: 0.97em;
+        vertical-align: middle;
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+        white-space: nowrap;
+    }
+    .modern-table td:last-child {
+        border-right: none;
+    }
+    .modern-table tr:hover td {
+        background: #c9eec2;
+        transition: background 0.18s;
+    }
+    .modern-table td.numeric {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-family: 'Roboto Mono', 'Consolas', monospace;
+    }
+    body, .edit-adjustments-card {
+        font-family: Inter, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        font-size: 0.98em;
+    }
+    .edit-adjustments-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 70vh;
+        padding: 0;
+        margin-top: 0;
+        background: linear-gradient(120deg, #f4f6f8 60%, #e9f7df 100%);
+    }
+    
+    /* New UI Components */
+    .page-header {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, #fff 0%, #f8fffe 100%);
+        border-radius: 16px;
+        border: 1px solid #e8f5e8;
+        box-shadow: 0 4px 20px rgba(128, 195, 66, 0.08);
+    }
+    
+    .page-header h2 {
+        margin-bottom: 0.5rem;
+        color: #2d5016;
+        font-weight: 700;
+    }
+    
+    .info-cards-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .info-card {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .info-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+    
+    .info-card-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border-radius: 10px;
+        margin-right: 1rem;
+        color: white;
+        font-size: 1.2rem;
+    }
+    
+    .info-card-content h6 {
+        margin: 0 0 0.25rem 0;
+        font-weight: 600;
+        color: #495057;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .info-card-content p {
+        margin: 0;
+        color: #2d3436;
+        font-weight: 500;
+        word-break: break-all;
+    }
+    
+    .table-section {
+        margin-bottom: 2rem;
+    }
+    
+    .table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+        border-radius: 12px 12px 0 0;
+        border: 1px solid #dee2e6;
+        border-bottom: none;
+    }
+    
+    .table-title {
+        display: flex;
+        align-items: center;
+    }
+    
+    .table-title h5 {
+        color: #2d3436;
+        font-weight: 600;
+    }
+    
+    .table-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .action-buttons-section {
+        margin-top: 3rem;
+        padding: 2rem;
+        background: #fff;
+        border-radius: 16px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+    
+    .action-buttons-container {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .action-buttons-container .btn {
+        min-width: 200px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        border-radius: 10px;
+        transition: all 0.2s;
+    }
+    
+    .action-buttons-container .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+    
+    /* Enhanced table styling */
+    .modern-table-wrapper {
+        border-radius: 0 0 12px 12px;
+        border: 1px solid #dee2e6;
+        border-top: none;
+    }
+    
+    .editable-adjusted-hours {
+        background: #fff3cd !important;
+        cursor: pointer;
+        position: relative;
+    }
+    
+    .editable-adjusted-hours:hover {
+        background: #ffeaa7 !important;
+    }
+    
+    .editable-adjusted-hours::after {
+        content: '\f044';
+        font-family: 'Font Awesome 5 Free';
+        font-weight: 900;
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.7rem;
+        color: #6c757d;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .editable-adjusted-hours:hover::after {
+        opacity: 1;
+    }
+    
+    /* Hide main content pill wrapper */
+        .main-content-pill {
+            display: none !important;
+        }
+        
+        .main-wrapper-pill {
+            display: none !important;
+        }
+    
+    @media (max-width: 768px) {
+        .info-cards-container {
+            grid-template-columns: 1fr;
+        }
+        
+        .table-header {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+        
+        .action-buttons-container {
+            flex-direction: column;
+        }
+        
+        .action-buttons-container .btn {
+            min-width: 100%;
+        }
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('adjustmentsForm');
+    const saveBtn = document.getElementById('saveAdjustmentsBtn');
+    const table = document.getElementById('adjustmentsTable');
+
+    // Add input validation
+    table.addEventListener('input', function(e) {
+        if (e.target.type === 'number') {
+            const original = parseFloat(e.target.dataset.original);
+            const current = parseFloat(e.target.value);
+            
+            if (current > original) {
+                e.target.value = original;
+                alert('Adjusted Hours cannot be greater than Total Hours');
+            }
+        }
+    });
+
+    form.addEventListener('submit', function(event) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    document.querySelectorAll('.editable-adjusted-hours').forEach(cell => {
+        cell.addEventListener('click', function handler(e) {
+            if (cell.querySelector('input')) return;
+            const originalValue = cell.getAttribute('data-original');
+            const span = cell.querySelector('.cell-value');
+            const row = cell.closest('tr');
+            const rowId = row.getAttribute('data-row-id');
+            // Create input
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.value = span.textContent.trim();
+            input.style.width = '60px';
+            input.className = 'edit-input';
+            // Create icons
+            const check = document.createElement('i');
+            check.className = 'fa fa-check confirm-edit';
+            check.style.color = '#8bb7b7';
+            check.style.cursor = 'pointer';
+            check.style.marginLeft = '8px';
+            const cross = document.createElement('i');
+            cross.className = 'fa fa-times cancel-edit';
+            cross.style.color = '#ff6600';
+            cross.style.cursor = 'pointer';
+            cross.style.marginLeft = '8px';
+            // Clear cell and add input + icons
+            cell.innerHTML = '';
+            cell.appendChild(input);
+            cell.appendChild(check);
+            cell.appendChild(cross);
+            input.focus();
+            // Confirm edit with AJAX
+            check.onclick = function() {
+                const newValue = input.value;
+                fetch(`/facturation/slr/ajax/update-adjusted-hours/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        row_id: rowId,
+                        adjusted_hours: newValue,
+                        run_id: '{{ run_id }}'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        cell.innerHTML = `<span class="cell-value">${data.updated_row.adjusted_hours}</span>`;
+                        cell.setAttribute('data-original', data.updated_row.adjusted_hours);
+                        // Update Adjusted Cost and Heures Retirées in the same row
+                        if (row.querySelector('.adjusted-cost-cell'))
+                            row.querySelector('.adjusted-cost-cell').textContent = data.updated_row.adjusted_cost;
+                        if (row.querySelector('.heures-retires-cell'))
+                            row.querySelector('.heures-retires-cell').textContent = data.updated_row.heures_retires;
+                        // Update totals after successful edit
+                        updateTotals();
+                    } else {
+                        alert('Update failed!');
+                        cell.innerHTML = `<span class=\"cell-value\">${originalValue}</span>`;
+                    }
+                })
+                .catch(() => {
+                    alert('Error updating value!');
+                    cell.innerHTML = `<span class=\"cell-value\">${originalValue}</span>`;
+                });
+            };
+            // Cancel edit
+            cross.onclick = function() {
+                cell.innerHTML = `\u003cspan class=\"cell-value\"\u003e${originalValue}\u003c/span\u003e`;
+            };
+            input.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter') check.onclick();
+                if (ev.key === 'Escape') cross.onclick();
+            });
+        });
+    });
+
+    function updateTotals() {
+        // Calculate totals for adjustments table
+        const visibleRows = rows.filter(row => row.style.display !== 'none');
+        let totalAdjustedHours = 0;
+        let totalHeuresRetirees = 0;
+        
+        // Find column indices
+        const headers = document.querySelectorAll('#adjustmentsTable thead th');
+        let adjHoursColIndex = -1;
+        let heuresRetiresColIndex = -1;
+        
+        headers.forEach((header, index) => {
+            if (header.textContent.trim() === 'Adjusted Hours') {
+                adjHoursColIndex = index;
+            } else if (header.textContent.trim() === 'Heures Retirées') {
+                heuresRetiresColIndex = index;
+            }
+        });
+        
+        // Calculate specific totals for Adjusted Hours and Heures Retirées
+        visibleRows.forEach(row => {
+            if (adjHoursColIndex >= 0) {
+                const val = parseFloat(row.cells[adjHoursColIndex].textContent.replace(',', '.')) || 0;
+                totalAdjustedHours += val;
+            }
+            if (heuresRetiresColIndex >= 0) {
+                const val = parseFloat(row.cells[heuresRetiresColIndex].textContent.replace(',', '.')) || 0;
+                totalHeuresRetirees += val;
+            }
+        });
+        
+        // Update specific total cells
+        if (document.getElementById('total-adjusted-hours')) {
+            document.getElementById('total-adjusted-hours').textContent =
+                totalAdjustedHours.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        if (document.getElementById('total-heures-retirees')) {
+            document.getElementById('total-heures-retirees').textContent =
+                totalHeuresRetirees.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        
+        // Calculate totals for all columns (existing logic)
+        const adjustmentsTotals = [];
+        const numColumns = headers.length;
+        
+        // Initialize totals array
+        for (let i = 0; i < numColumns; i++) {
+            adjustmentsTotals[i] = 0;
+        }
+        
+        // Sum each column for visible rows
+        visibleRows.forEach(row => {
+            for (let i = 0; i < row.cells.length; i++) {
+                const cellText = row.cells[i].textContent || '';
+                const numValue = parseFloat(cellText.replace(/[^\-\d\.]/g, '')) || 0;
+                if (!isNaN(numValue)) {
+                    adjustmentsTotals[i] += numValue;
+                }
+            }
+        });
+        
+        // Update adjustments table footer cells
+        const adjustmentsFooterCells = document.querySelectorAll('#adjustmentsTable tfoot td');
+        adjustmentsFooterCells.forEach((cell, index) => {
+            if (cell.id && adjustmentsTotals[index] !== undefined) {
+                cell.textContent = adjustmentsTotals[index].toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+        });
+        
+        // Calculate totals for summary table
+        const visibleSummaryRows = summaryRows.filter(row => row.style.display !== 'none');
+        const summaryTotals = [];
+        
+        // Get the number of columns in the summary table
+        const summaryHeaders = document.querySelectorAll('#summaryTable thead th');
+        const numSummaryColumns = summaryHeaders.length;
+        
+        // Initialize summary totals array
+        for (let i = 0; i < numSummaryColumns; i++) {
+            summaryTotals[i] = 0;
+        }
+        
+        // Sum each column for visible summary rows
+        visibleSummaryRows.forEach(row => {
+            for (let i = 0; i < row.cells.length; i++) {
+                const cellText = row.cells[i].textContent || '';
+                const numValue = parseFloat(cellText.replace(/[^\-\d\.]/g, '')) || 0;
+                if (!isNaN(numValue)) {
+                    summaryTotals[i] += numValue;
+                }
+            }
+        });
+        
+        // Update summary table footer cells
+        const summaryFooterCells = document.querySelectorAll('#summaryTable tfoot td');
+        summaryFooterCells.forEach((cell, index) => {
+            if (cell.id && summaryTotals[index] !== undefined) {
+                cell.textContent = summaryTotals[index].toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+        });
+        
+        console.log('Adjustments totals:', adjustmentsTotals);
+        console.log('Summary totals:', summaryTotals);
+    }
+
+    // Helper function to fill select options alphabetically
+    function fillSelect(selector, dataSet) {
+        const select = document.querySelector(selector);
+        if (!select) return;
+        
+        // Convert Set to Array and sort alphabetically
+        const sortedOptions = Array.from(dataSet).sort((a, b) => {
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        });
+        
+        // Clear existing options (except the first "All" option)
+        while (select.children.length > 1) {
+            select.removeChild(select.lastChild);
+        }
+        
+        // Add sorted options
+        sortedOptions.forEach(value => {
+            if (value && value.trim()) { // Only add non-empty values
+                const option = document.createElement('option');
+                option.value = value.trim();
+                option.textContent = value.trim();
+                select.appendChild(option);
+            }
+        });
+    }
+
+    // Populate dropdowns dynamically on page load
+    const rows = [...document.querySelectorAll('#adjustmentsTable tbody tr')];
+    const summaryRows = [...document.querySelectorAll('#summaryTable tbody tr')];
+    const projectSet = new Set();
+    const employeeSet = new Set();
+    
+    rows.forEach(r => {
+        const libproj = r.dataset.libproj;
+        const employee = r.dataset.employee;
+        if (libproj) projectSet.add(libproj.trim());
+        if (employee) employeeSet.add(employee.trim());
+    });
+    
+    fillSelect('#filter-project', projectSet);
+    fillSelect('#filter-employee', employeeSet);
+
+    // Add filtering functionality
+    const filterProject = document.getElementById('filter-project');
+    const filterEmployee = document.getElementById('filter-employee');
+    const resetFilters = document.getElementById('reset-filters');
+    const adjustmentsTable = document.getElementById('adjustmentsTable');
+
+    function updateResetButtonState() {
+        const isDefault = filterProject.value === '' && filterEmployee.value === '';
+        resetFilters.disabled = isDefault;
+    }
+
+    function applyFilters() {
+        const selectedProject = filterProject.value;
+        const selectedEmployee = filterEmployee.value;
+
+        // Filter main table
+        rows.forEach(row => {
+            const rowProject = row.dataset.libproj || '';
+            const rowEmployee = row.dataset.employee || '';
+            
+            const projectMatch = !selectedProject || rowProject === selectedProject;
+            const employeeMatch = !selectedEmployee || rowEmployee === selectedEmployee;
+            
+            if (projectMatch && employeeMatch) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Filter summary table
+        summaryRows.forEach(row => {
+            const rowProject = row.dataset.project || '';
+            const projectMatch = !selectedProject || rowProject === selectedProject;
+
+            if (projectMatch) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Update main table row count badge
+        const visibleRows = rows.filter(row => row.style.display !== 'none');
+        const badge = document.querySelector('.badge.bg-light.text-dark');
+        if (badge) {
+            badge.textContent = `${visibleRows.length} lignes`;
+        }
+
+        // Update summary table row count badge
+        const visibleSummaryRows = summaryRows.filter(row => row.style.display !== 'none');
+        const summaryBadge = document.getElementById('summary-count-badge');
+        if (summaryBadge) {
+            summaryBadge.textContent = `${visibleSummaryRows.length} projets`;
+        }
+
+        updateResetButtonState();
+        updateTotals();
+    }
+
+    // Add event listeners for filters
+    if (filterProject) {
+        filterProject.addEventListener('change', applyFilters);
+    }
+    if (filterEmployee) {
+        filterEmployee.addEventListener('change', applyFilters);
+    }
+    if (resetFilters) {
+        resetFilters.addEventListener('click', function() {
+            filterProject.value = '';
+            filterEmployee.value = '';
+            applyFilters();
+        });
+    }
+
+    // Expose Adjusted-Hours column index for updateTotals() reuse
+    const adjHoursColIndex = [...document.querySelectorAll('#adjustmentsTable thead th')]
+        .findIndex(th => th.textContent.trim() === 'Adjusted Hours');
+
+    // Date cells tooltip functionality
+    document.querySelectorAll('.date-cell').forEach(cell => {
+        let tooltip = null;
+        
+        cell.addEventListener('click', function(e) {
+            const projectName = cell.getAttribute('data-project');
+            const employeeName = cell.getAttribute('data-employee');
+            
+            // Remove existing tooltip if any
+            if (tooltip) {
+                tooltip.remove();
+                tooltip = null;
+                return;
+            }
+            
+            // Show loading state
+            cell.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #28a745;"></i>';
+            
+            // Fetch dates from server
+            fetch(`/facturation/slr/{{ run_id }}/ajax/project-dates/?project=${encodeURIComponent(projectName)}&employee=${encodeURIComponent(employeeName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Restore original icon
+                    cell.innerHTML = '<i class="fas fa-calendar-alt" style="color: #28a745; cursor: pointer;"></i>';
+                    
+                    if (data.success && data.dates.length > 0) {
+                        // Create tooltip
+                        tooltip = document.createElement('div');
+                        tooltip.className = 'dates-tooltip';
+                        tooltip.style.cssText = `
+                            position: absolute;
+                            background: white;
+                            border: 2px solid #28a745;
+                            border-radius: 8px;
+                            padding: 12px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                            z-index: 1000;
+                            max-width: 300px;
+                            font-size: 0.9em;
+                            max-height: 200px;
+                            overflow-y: auto;
+                        `;
+                        
+                        let tooltipContent = `
+                            <div style="font-weight: bold; color: #28a745; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 6px;">
+                                ${projectName} - ${employeeName}
+                            </div>
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 8px;">
+                                ${data.dates.length} date(s) d'imputation:
+                            </div>
+                        `;
+                        
+                        data.dates.forEach(dateInfo => {
+                            tooltipContent += `
+                                <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted #eee;">
+                                    <span>${dateInfo.date}</span>
+                                    <span style="font-weight: bold; color: #007bff;">${dateInfo.heures}h</span>
+                                </div>
+                            `;
+                        });
+                        
+                        // Add total hours
+                        const totalHours = data.dates.reduce((sum, d) => sum + d.heures, 0);
+                        tooltipContent += `
+                            <div style="margin-top: 8px; padding-top: 8px; border-top: 2px solid #28a745; font-weight: bold; color: #28a745;">
+                                Total: ${totalHours}h
+                            </div>
+                            <div style="margin-top: 8px; text-align: center;">
+                                <small style="color: #999;">Cliquez à nouveau pour fermer</small>
+                            </div>
+                        `;
+                        
+                        tooltip.innerHTML = tooltipContent;
+                        
+                        // Position tooltip
+                        const rect = cell.getBoundingClientRect();
+                        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+                        
+                        tooltip.style.left = (rect.right + scrollLeft + 10) + 'px';
+                        tooltip.style.top = (rect.top + scrollTop) + 'px';
+                        
+                        document.body.appendChild(tooltip);
+                        
+                        // Adjust position if tooltip goes off screen
+                        const tooltipRect = tooltip.getBoundingClientRect();
+                        if (tooltipRect.right > window.innerWidth) {
+                            tooltip.style.left = (rect.left + scrollLeft - tooltip.offsetWidth - 10) + 'px';
+                        }
+                        if (tooltipRect.bottom > window.innerHeight) {
+                            tooltip.style.top = (rect.bottom + scrollTop - tooltip.offsetHeight) + 'px';
+                        }
+                        
+                    } else {
+                        // Show no data message
+                        tooltip = document.createElement('div');
+                        tooltip.className = 'dates-tooltip';
+                        tooltip.style.cssText = `
+                            position: absolute;
+                            background: #fff3cd;
+                            border: 2px solid #ffc107;
+                            border-radius: 8px;
+                            padding: 12px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                            z-index: 1000;
+                            font-size: 0.9em;
+                        `;
+                        tooltip.innerHTML = `
+                            <div style="color: #856404;">
+                                <i class="fas fa-exclamation-triangle"></i> Aucune date d'imputation trouvée pour ce projet et cet employé.
+                            </div>
+                        `;
+                        
+                        const rect = cell.getBoundingClientRect();
+                        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+                        tooltip.style.left = (rect.right + scrollLeft + 10) + 'px';
+                        tooltip.style.top = (rect.top + scrollTop) + 'px';
+                        
+                        document.body.appendChild(tooltip);
+                        
+                        // Auto-remove after 3 seconds
+                        setTimeout(() => {
+                            if (tooltip) {
+                                tooltip.remove();
+                                tooltip = null;
+                            }
+                        }, 3000);
+                    }
+                })
+                .catch(error => {
+                    // Restore original icon
+                    cell.innerHTML = '<i class="fas fa-calendar-alt" style="color: #28a745; cursor: pointer;"></i>';
+                    console.error('Error fetching dates:', error);
+                    
+                    // Show error tooltip
+                    tooltip = document.createElement('div');
+                    tooltip.style.cssText = `
+                        position: absolute;
+                        background: #f8d7da;
+                        border: 2px solid #dc3545;
+                        border-radius: 8px;
+                        padding: 12px;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                        z-index: 1000;
+                        font-size: 0.9em;
+                        color: #721c24;
+                    `;
+                    tooltip.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erreur lors du chargement des dates.';
+                    
+                    const rect = cell.getBoundingClientRect();
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+                    tooltip.style.left = (rect.right + scrollLeft + 10) + 'px';
+                    tooltip.style.top = (rect.top + scrollTop) + 'px';
+                    
+                    document.body.appendChild(tooltip);
+                    
+                    // Auto-remove after 3 seconds
+                    setTimeout(() => {
+                        if (tooltip) {
+                            tooltip.remove();
+                            tooltip = null;
+                        }
+                    }, 3000);
+                });
+        });
+    });
+    
+    // Close tooltips when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.date-cell') && !e.target.closest('.dates-tooltip')) {
+            const tooltips = document.querySelectorAll('.dates-tooltip');
+            tooltips.forEach(tooltip => tooltip.remove());
+        }
+    });
+
+    // Initial state
+    applyFilters();
+    updateTotals();
+
+});
+</script>
+{% endblock %}

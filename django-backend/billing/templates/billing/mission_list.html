@@ -1,0 +1,676 @@
+{% extends "billing/base.html" %}
+
+{% block title %}{{ page_title }} - Dashboard{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="modern-missions-container">
+    <!-- Header Section -->
+    <div class="missions-header">
+        <div class="header-content">
+            <div class="title-section">
+                <h1 class="page-title">{{ page_title }}</h1>
+                <p class="page-subtitle">Gérez vos enregistrements de mission efficacement</p>
+            </div>
+            <div class="header-actions">
+                <a href="{% url 'mission_create' %}" class="btn-primary">
+                    <i class="fas fa-plus"></i>
+                    Ajouter une nouvelle mission
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and Controls Section -->
+    <div class="controls-section">
+        <div class="search-container">
+            <form method="get" class="search-form">
+                <div class="search-input-group">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="search" value="{{ search_query }}" 
+                           placeholder="Rechercher les missions par nom, projet ou code..." class="search-input">
+                    <button type="submit" class="search-btn">Rechercher</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="bulk-actions">
+            <button type="submit" form="missionForm" class="btn-bulk-delete" id="bulkDeleteBtn" disabled>
+                <i class="fas fa-trash"></i>
+                Supprimer la sélection
+            </button>
+        </div>
+    </div>
+
+    <!-- Table Section -->
+    <div class="table-container">
+        <form method="post" action="{% url 'mission_bulk_delete' %}" id="missionForm">
+            {% csrf_token %}
+            <div class="table-wrapper">
+                <table class="missions-table">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-column">
+                                <div class="checkbox-wrapper">
+                                    <input type="checkbox" id="selectAll" class="select-all-checkbox">
+                                    <label for="selectAll"></label>
+                                </div>
+                            </th>
+                            <th class="sortable">OTP L2</th>
+                            <th class="sortable">Belgian Name</th>
+                            <th class="sortable">Libelle de Projet</th>
+                            <th class="sortable">Type de Code</th>
+                            <th class="actions-column">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mission in missions %}
+                        <tr class="mission-row" data-mission-id="{{ mission.id }}">
+                            <td class="checkbox-column">
+                                <div class="checkbox-wrapper">
+                                    <input type="checkbox" name="selected_missions" value="{{ mission.id }}" 
+                                           class="mission-checkbox" id="mission-{{ mission.id }}">
+                                    <label for="mission-{{ mission.id }}"></label>
+                                </div>
+                            </td>
+                            <td class="otp-cell">
+                                <span class="otp-code">{{ mission.otp_l2 }}</span>
+                            </td>
+                            <td class="name-cell">
+                                <span class="mission-name">{{ mission.belgian_name|default:"N/A" }}</span>
+                            </td>
+                            <td class="project-cell">
+                                <span class="project-title">{{ mission.libelle_de_projet|default:"N/A" }}</span>
+                            </td>
+                            <td class="code-type-cell">
+                                <span class="code-type-badge">{{ mission.get_code_type_display|default:"N/A" }}</span>
+                            </td>
+                            <td class="actions-column">
+                                <div class="action-buttons">
+                                    <a href="{% url 'mission_update' mission.pk %}" class="btn-action btn-edit" title="Modifier la mission">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'mission_delete' mission.pk %}" class="btn-action btn-delete" title="Supprimer la mission">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr class="empty-row">
+                            <td colspan="6" class="empty-message">
+                                <div class="empty-state">
+                                    <i class="fas fa-inbox"></i>
+                                    <h3>Aucune mission trouvée</h3>
+                                    <p>Commencez par ajouter votre première mission</p>
+                                    <a href="{% url 'mission_create' %}" class="btn-primary">
+                                        <i class="fas fa-plus"></i>
+                                        Ajouter une nouvelle mission
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* Modern Missions Page Styling */
+    .modern-missions-container {
+        padding: 0;
+        margin: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        animation: fadeIn 0.6s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Header Section */
+    .missions-header {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 50%, #7CB342 100%);
+        color: white;
+        padding: 2rem 2rem 3rem;
+        box-shadow: 0 4px 20px rgba(124, 179, 66, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .missions-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="2" fill="white" opacity="0.1"/><circle cx="80" cy="40" r="1" fill="white" opacity="0.1"/><circle cx="40" cy="80" r="1.5" fill="white" opacity="0.1"/></svg>');
+        pointer-events: none;
+    }
+
+    .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 1200px;
+        margin: 0 auto;
+        position: relative;
+        z-index: 1;
+    }
+
+    .title-section {
+        flex: 1;
+    }
+
+    .page-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        letter-spacing: -0.5px;
+    }
+
+    .page-subtitle {
+        font-size: 1.1rem;
+        margin: 0.5rem 0 0;
+        opacity: 0.9;
+        font-weight: 300;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    /* Controls Section */
+    .controls-section {
+        background: white;
+        padding: 1.5rem 2rem;
+        margin: -1.5rem 2rem 2rem;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+        z-index: 2;
+        backdrop-filter: blur(10px);
+    }
+
+    .search-container {
+        flex: 1;
+        max-width: 600px;
+    }
+
+    .search-input-group {
+        display: flex;
+        align-items: center;
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 50px;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .search-input-group:focus-within {
+        border-color: #C2EB79;
+        box-shadow: 0 0 0 3px rgba(194, 235, 121, 0.2);
+        background: white;
+    }
+
+    .search-input-group i {
+        color: #6c757d;
+        margin-right: 0.75rem;
+        font-size: 1.1rem;
+    }
+
+    .search-input {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 1rem;
+        padding: 0.5rem 0;
+        outline: none;
+        color: #495057;
+    }
+
+    .search-input::placeholder {
+        color: #6c757d;
+    }
+
+    .search-btn {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        margin-left: 0.5rem;
+    }
+
+    .search-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(194, 235, 121, 0.3);
+    }
+
+    /* Table Container */
+    .table-container {
+        margin: 0 2rem 2rem;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        animation: slideUp 0.6s ease-out 0.2s both;
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .table-wrapper {
+        overflow-x: auto;
+    }
+
+    .missions-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .missions-table thead {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        color: white;
+    }
+
+    .missions-table th {
+        padding: 1.25rem 1rem;
+        text-align: left;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.85rem;
+        border: none;
+        position: relative;
+    }
+
+    .missions-table th.sortable {
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+
+    .missions-table th.sortable:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .missions-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #f1f3f4;
+        vertical-align: middle;
+        transition: all 0.3s ease;
+    }
+
+    .mission-row {
+        transition: all 0.3s ease;
+    }
+
+    .mission-row:hover {
+        background-color: #f8f9fa;
+        transform: translateX(5px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Checkbox Styling */
+    .checkbox-column {
+        width: 50px;
+        text-align: center;
+    }
+
+    .checkbox-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .checkbox-wrapper input[type="checkbox"] {
+        display: none;
+    }
+
+    .checkbox-wrapper label {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #C2EB79;
+        border-radius: 4px;
+        display: inline-block;
+        cursor: pointer;
+        position: relative;
+        transition: all 0.3s ease;
+        background: white;
+    }
+
+    .checkbox-wrapper label:hover {
+        border-color: #A8E063;
+        transform: scale(1.1);
+    }
+
+    .checkbox-wrapper input[type="checkbox"]:checked + label {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        border-color: #A8E063;
+    }
+
+    .checkbox-wrapper input[type="checkbox"]:checked + label::after {
+        content: '✓';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+    }
+
+    /* Cell Content Styling */
+    .otp-code {
+        font-family: 'Courier New', monospace;
+        background: #f8f9fa;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+        color: #495057;
+    }
+
+    .mission-name {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .project-title {
+        color: #5a6c7d;
+        font-style: italic;
+    }
+
+    .code-type-badge {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 15px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Action Buttons */
+    .actions-column {
+        width: 120px;
+        text-align: center;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .btn-action {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    .btn-edit {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        color: white;
+    }
+
+    .btn-edit:hover {
+        transform: translateY(-2px) scale(1.1);
+        box-shadow: 0 8px 25px rgba(194, 235, 121, 0.4);
+    }
+
+    .btn-delete {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+        color: white;
+    }
+
+    .btn-delete:hover {
+        transform: translateY(-2px) scale(1.1);
+        box-shadow: 0 8px 25px rgba(238, 90, 82, 0.4);
+    }
+
+    /* Primary and Bulk Action Buttons */
+    .btn-primary {
+        background: linear-gradient(135deg, #C2EB79 0%, #A8E063 100%);
+        color: white;
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 25px;
+        text-decoration: none;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(194, 235, 121, 0.4);
+        text-decoration: none;
+        color: white;
+    }
+
+    .btn-bulk-delete {
+        background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 25px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.3s ease;
+        cursor: not-allowed;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .btn-bulk-delete:not(:disabled) {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+        cursor: pointer;
+    }
+
+    .btn-bulk-delete:not(:disabled):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(238, 90, 82, 0.4);
+    }
+
+    /* Empty State */
+    .empty-row {
+        background: #f8f9fa;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #6c757d;
+    }
+
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        color: #C2EB79;
+    }
+
+    .empty-state h3 {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+        color: #495057;
+    }
+
+    .empty-state p {
+        margin-bottom: 2rem;
+        font-size: 1rem;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .modern-missions-container {
+            padding: 0;
+        }
+        
+        .missions-header {
+            padding: 1.5rem 1rem 2rem;
+        }
+        
+        .header-content {
+            flex-direction: column;
+            text-align: center;
+            gap: 1.5rem;
+        }
+        
+        .page-title {
+            font-size: 2rem;
+        }
+        
+        .controls-section {
+            margin: -1rem 1rem 1rem;
+            padding: 1rem;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .table-container {
+            margin: 0 1rem 1rem;
+        }
+        
+        .missions-table {
+            font-size: 0.85rem;
+        }
+        
+        .missions-table th,
+        .missions-table td {
+            padding: 0.75rem 0.5rem;
+        }
+        
+        .mission-row:hover {
+            transform: none;
+        }
+        
+        .search-input-group {
+            padding: 0.75rem 1rem;
+        }
+        
+        .btn-primary,
+        .btn-bulk-delete {
+            padding: 0.6rem 1.5rem;
+            font-size: 0.85rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .page-title {
+            font-size: 1.75rem;
+        }
+        
+        .missions-table th,
+        .missions-table td {
+            padding: 0.5rem 0.25rem;
+        }
+        
+        .btn-action {
+            width: 32px;
+            height: 32px;
+            font-size: 0.8rem;
+        }
+        
+        .code-type-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+        }
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const missionCheckboxes = document.getElementsByClassName('mission-checkbox');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const missionForm = document.getElementById('missionForm');
+
+    // Handle select all checkbox
+    selectAllCheckbox.addEventListener('change', function() {
+        Array.from(missionCheckboxes).forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkDeleteButton();
+    });
+
+    // Handle enabling/disabling bulk delete button
+    Array.from(missionCheckboxes).forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkDeleteButton);
+    });
+
+    function updateBulkDeleteButton() {
+        const anyChecked = Array.from(missionCheckboxes).some(checkbox => checkbox.checked);
+        bulkDeleteBtn.disabled = !anyChecked;
+        if (anyChecked) {
+            bulkDeleteBtn.classList.add('active');
+        } else {
+            bulkDeleteBtn.classList.remove('active');
+        }
+    }
+
+    // Handle form submission
+    missionForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const checkedBoxes = Array.from(missionCheckboxes).filter(cb => cb.checked);
+        if (checkedBoxes.length > 0) {
+            if (confirm(`Êtes-vous sûr de vouloir supprimer ${checkedBoxes.length} mission(s) sélectionnée(s) ?`)) {
+                // Log the selected missions for debugging
+                console.log('Selected missions:', checkedBoxes.map(cb => cb.value));
+                
+                // Ensure all checked boxes are properly included in the form
+                checkedBoxes.forEach(checkbox => {
+                    if (!checkbox.name) {
+                        checkbox.name = 'selected_missions';
+                    }
+                });
+                
+                // Submit the form
+                this.submit();
+            }
+        } else {
+            e.preventDefault();
+            alert('Veuillez sélectionner au moins une mission à supprimer.');
+        }
+    });
+});
+</script>
+{% endblock %} 

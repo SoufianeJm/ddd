@@ -1,0 +1,528 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Deloitte SLR{% endblock %}</title>
+    
+    <!-- Prevent FOUC by hiding body until CSS loads -->
+    <style>
+        body { 
+            visibility: hidden; 
+            opacity: 0; 
+            transition: opacity 0.2s ease-in-out;
+        }
+        body.loaded { 
+            visibility: visible; 
+            opacity: 1; 
+        }
+    </style>
+    
+    <!-- Preload critical CSS -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></noscript>
+    
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"></noscript>
+    
+    <link rel="stylesheet" href="{% static 'billing/css/style.css' %}">
+    
+    {% block extra_css %}{% endblock %}
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- NEW Pill-shaped Horizontal Navbar with Inline CSS -->
+    <nav class="facturation-navbar">
+        <div class="facturation-nav-container">
+            <a href="{% url 'home' %}" class="facturation-brand">
+                <span class="facturation-dot"></span>
+                <span class="facturation-brand-text">Facturation des missions d'audits</span>
+            </a>
+            <ul class="facturation-nav-list">
+                <li class="facturation-nav-item">
+                    <a href="{% url 'home' %}" class="facturation-nav-link {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'facturation_slr' %}facturation-active{% endif %}">
+                        Calculer Facture
+                    </a>
+                </li>
+                <li class="facturation-nav-item">
+                    <a href="{% url 'dashboard' %}" class="facturation-nav-link {% if request.resolver_match.url_name == 'dashboard' %}facturation-active{% endif %}">
+                        Dashboard
+                    </a>
+                </li>
+                <li class="facturation-nav-item">
+                    <a href="{% url 'dashboard_resources' %}" class="facturation-nav-link {% if request.resolver_match.url_name == 'dashboard_resources' %}facturation-active{% endif %}">
+                        Tableau de Bord Ressources
+                    </a>
+                </li>
+                <li class="facturation-nav-item">
+                    <a href="{% url 'resource_list' %}" class="facturation-nav-link {% if request.resolver_match.url_name == 'resource_list' %}facturation-active{% endif %}">
+                        Ressources
+                    </a>
+                </li>
+                <li class="facturation-nav-item">
+                    <a href="{% url 'mission_list' %}" class="facturation-nav-link {% if request.resolver_match.url_name == 'mission_list' %}facturation-active{% endif %}">
+                        Missions
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    
+    <!-- Main Content Area below navbar -->
+    <div class="main-wrapper-pill">
+        <main class="main-content-pill">
+            {% if messages %}
+            <div class="alert-container">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    <!-- HelpBot Widget -->
+    <div id="helpWidget" class="help-widget">
+        <!-- Help Toggle Button -->
+        <div id="helpToggle" class="help-toggle" onclick="toggleHelpBot()">
+            <i class="fas fa-question-circle"></i>
+            <span class="help-notification" id="helpNotification">!</span>
+        </div>
+        
+        <!-- Help Window -->
+        <div id="helpWindow" class="help-window">
+            <div class="help-header">
+                <div class="help-header-info">
+                    <i class="fas fa-robot"></i>
+                    <div>
+                        <h6>HelpBot Assistant</h6>
+                        <small>Assistant d'aide</small>
+                    </div>
+                </div>
+                <div class="help-header-actions">
+                    <button class="help-action-btn" onclick="clearHelpHistory()" title="Vider l'historique">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="help-close" onclick="toggleHelpBot()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="help-messages" id="helpMessages">
+                <!-- Messages will be added here dynamically by helpbot.js -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle profile dropdown (if present)
+        function toggleProfileDropdown() {
+            const dropdown = document.getElementById('profileDropdown');
+            if (dropdown) dropdown.classList.toggle('show');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('profileDropdown');
+            const profileTrigger = document.querySelector('.profile-trigger');
+            if (dropdown && profileTrigger && !profileTrigger.contains(event.target) && !dropdown.contains(event.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+
+        // Auto-dismiss alerts after 2.5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show body once DOM is ready and CSS is loaded
+            document.body.classList.add('loaded');
+            
+            setTimeout(function() {
+                document.querySelectorAll('.alert').forEach(function(alert) {
+                    alert.style.opacity = '0';
+                    setTimeout(function() { alert.remove(); }, 400);
+                });
+            }, 2500);
+        });
+    </script>
+
+    <!-- Bootstrap JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- HelpBot JavaScript -->
+    <script src="{% static 'js/helpbot.js' %}"></script>
+    
+    {% block extra_body %}{% endblock %}
+    {% block extra_js %}{% endblock %}
+
+    <style>
+    /* HelpBot Widget Styles */
+    .help-widget {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .help-toggle {
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #80C342 0%, #6d9a1d 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 20px rgba(128, 195, 66, 0.3);
+        transition: all 0.3s ease;
+        position: relative;
+        color: white;
+        font-size: 24px;
+    }
+    
+    .help-toggle:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 25px rgba(128, 195, 66, 0.4);
+    }
+    
+    .help-notification {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        background: #dc3545;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .help-window {
+        position: absolute;
+        bottom: 80px;
+        right: 0;
+        width: 400px;
+        max-width: 90vw;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        display: none;
+        overflow: hidden;
+        max-height: 80vh;
+    }
+    
+    .help-window.open {
+        display: block;
+        animation: slideUp 0.3s ease-out;
+    }
+    
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .help-header {
+        background: linear-gradient(135deg, #80C342 0%, #6d9a1d 100%);
+        color: white;
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .help-header-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .help-header-info i {
+        font-size: 18px;
+    }
+    
+    .help-header h6 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+    
+    .help-header small {
+        opacity: 0.9;
+        font-size: 12px;
+    }
+    
+    .help-header-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .help-action-btn,
+    .help-close {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 5px;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .help-action-btn:hover,
+    .help-close:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .help-messages {
+        height: 400px;
+        overflow-y: auto;
+        padding: 15px;
+        background: #f8f9fa;
+    }
+    
+    .help-message {
+        display: flex;
+        margin-bottom: 15px;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .help-message-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+    
+    .bot-avatar {
+        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        color: white;
+    }
+    
+    .help-message-content {
+        flex: 1;
+        background: white;
+        padding: 8px 10px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .help-message-content p {
+        margin: 0 0 6px 0;
+        font-size: 12px;
+        line-height: 1.3;
+        color: #333;
+    }
+    
+    .help-message-content p:last-child {
+        margin-bottom: 0;
+    }
+    
+    .help-quick-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    
+    .help-quick-btn {
+        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        text-decoration: none;
+    }
+    
+    .help-quick-btn:hover {
+        background: linear-gradient(135deg, #45a049 0%, #4CAF50 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        color: white;
+        text-decoration: none;
+    }
+    
+    /* Scrollbar styles for help messages */
+    .help-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .help-messages::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
+    }
+    
+    .help-messages::-webkit-scrollbar-thumb {
+        background: #4CAF50;
+        border-radius: 3px;
+    }
+    
+    .help-messages::-webkit-scrollbar-thumb:hover {
+        background: #45a049;
+    }
+    
+    /* NEW FACTURATION NAVBAR - Inline CSS */
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    
+    body {
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #F4F6F8;
+        color: #222;
+        line-height: 1.6;
+        padding-top: 64px; /* Space for fixed navbar */
+    }
+    
+    .facturation-navbar {
+        width: 100vw;
+        background: #191A1C;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 56px;
+        min-height: 56px;
+        box-shadow: none;
+        z-index: 100;
+        margin: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+    }
+    
+    .facturation-nav-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        margin: 0 auto;
+        padding: 0;
+        gap: 24px;
+    }
+    
+    .facturation-brand {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 1.25rem;
+        color: #fff;
+        margin-right: 26px;
+        gap: 8px;
+        letter-spacing: -0.5px;
+        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    }
+    
+    .facturation-dot {
+        width: 13px;
+        height: 13px;
+        background: #80C342;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    
+    .facturation-brand-text {
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: -0.5px;
+        font-size: 1.13rem;
+    }
+    
+    .facturation-nav-list {
+        display: flex;
+        align-items: center;
+        background: #fff;
+        border-radius: 28px;
+        padding: 0 2px;
+        margin: 0;
+        list-style: none;
+        height: 48px;
+        min-height: 48px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    
+    .facturation-nav-item {
+        display: flex;
+        align-items: center;
+    }
+    
+    .facturation-nav-link {
+        display: flex;
+        align-items: center;
+        padding: 0 26px;
+        height: 44px;
+        border-radius: 24px;
+        font-size: 1.08rem;
+        font-weight: 600;
+        color: #222;
+        background: transparent;
+        text-decoration: none;
+        transition: background 0.18s, color 0.18s;
+        position: relative;
+        margin: 0 2px;
+        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+        letter-spacing: -0.5px;
+        box-shadow: none;
+    }
+    
+    .facturation-nav-link.facturation-active, .facturation-nav-link:hover {
+        background: #C9F4B3;
+        color: #191A1C;
+    }
+    
+    .facturation-nav-link.facturation-active {
+        background: #B8F27C;
+        color: #191A1C;
+        font-weight: 700;
+        z-index: 1;
+    }
+    
+    .main-wrapper-pill {
+        padding: 24px;
+        min-height: calc(100vh - 56px);
+    }
+    
+    .main-content-pill {
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    </style>
+
+</body>
+</html>
+

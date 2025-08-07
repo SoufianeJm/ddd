@@ -1,0 +1,988 @@
+{% extends 'billing/base.html' %}
+{% load static %}
+
+{% block title %}Enhanced Dashboard - Calculation Results{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Dashboard-specific styles */
+    body {
+        background-color: #f8f9fa;
+    }
+    
+    .dashboard-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    
+    .dashboard-title {
+        color: #2c3e50;
+        font-weight: 300;
+        margin-bottom: 2rem;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 1rem;
+    }
+    
+    .run-selector {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border: 1px solid #dee2e6;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    
+    .run-selector h5 {
+        color: #495057;
+        font-weight: 600;
+    }
+    
+    .form-select {
+        border-radius: 0.5rem;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .form-select:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+    
+    .kpi-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        pointer-events: none;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+    }
+    
+    .kpi-card:nth-child(1) { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .kpi-card:nth-child(2) { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .kpi-card:nth-child(3) { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .kpi-card:nth-child(4) { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+    
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .kpi-label {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin: 0;
+        font-weight: 500;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .error-alert {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
+        border: none;
+        color: white;
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 15px rgba(255,107,107,0.3);
+    }
+    
+    .run-info {
+        background: linear-gradient(135deg, #ffffff 0%, #f1f3f4 100%);
+        border-left: 4px solid #007bff;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    
+    .data-table {
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        overflow: hidden;
+        border: 1px solid #e9ecef;
+    }
+    
+    .table-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+        color: #495057;
+        font-size: 1.1rem;
+    }
+    
+    .btn {
+        border-radius: 0.5rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .btn-group .btn {
+        margin-right: 0.5rem;
+    }
+    
+    .badge {
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+    }
+    
+    .no-data-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        margin: 2rem 0;
+    }
+    
+    .no-data-state i {
+        color: #6c757d;
+        margin-bottom: 1.5rem;
+    }
+    
+    .no-data-state h3 {
+        color: #495057;
+        margin-bottom: 1rem;
+    }
+    
+    .no-data-state p {
+        color: #6c757d;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* Modal styling */
+    .modal-content {
+        border-radius: 1rem;
+        border: none;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    
+    .modal-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-bottom: 2px solid #dee2e6;
+        border-radius: 1rem 1rem 0 0;
+    }
+    
+    /* Mission Budget Styles */
+    .mission-budgets-container {
+        margin-bottom: 2rem;
+        animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .mission-budget-item {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border: 1px solid #e9ecef;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .mission-budget-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        border-color: #C2EB79;
+    }
+    
+    .mission-budget-item h6 {
+        color: #2c3e50;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        font-size: 1rem;
+    }
+    
+    .budget-amount {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #86BC25;
+        margin: 0;
+    }
+    
+    .clickable-kpi:hover {
+        background: linear-gradient(135deg, #5a9fd4 0%, #306998 100%) !important;
+    }
+    
+    .mission-budget-kpi {
+        position: relative;
+    }
+    
+    .mission-budget-kpi:hover {
+        background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%) !important;
+    }
+    
+    /* Mission Budget Selector Dropdown */
+    .mission-selector-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 1000;
+        max-height: 300px;
+        overflow-y: auto;
+        display: none;
+        margin-top: 5px;
+    }
+    
+    .mission-selector-item {
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        border-bottom: 1px solid #f1f3f4;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .mission-selector-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .mission-selector-item:last-child {
+        border-bottom: none;
+    }
+    
+    .mission-name {
+        font-weight: 500;
+        color: #2c3e50;
+        font-size: 0.9rem;
+    }
+    
+    .mission-budget {
+        font-weight: 700;
+        color: #86BC25;
+        font-size: 0.9rem;
+    }
+    
+    /* Mission Estimates Section Styles */
+    .mission-estimates-section {
+        margin-bottom: 2rem;
+    }
+    
+    .mission-estimate-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border: 2px solid #e9ecef;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    .mission-estimate-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        border-color: #86BC25;
+    }
+    
+    .mission-estimate-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    
+    .mission-estimate-header h6 {
+        color: #2c3e50;
+        font-weight: 600;
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.2;
+        text-align: left;
+        flex: 1;
+    }
+    
+    .mission-estimate-badge {
+        background: linear-gradient(135deg, #86BC25 0%, #C2EB79 100%);
+        color: #000;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.5rem;
+        margin-left: 0.5rem;
+        white-space: nowrap;
+    }
+    
+    .mission-estimate-value {
+        margin: 1rem 0;
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 0.2rem;
+    }
+    
+    .mission-estimate-value .currency {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #86BC25;
+    }
+    
+    .mission-estimate-value .amount {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+    
+    .mission-estimate-footer {
+        margin-top: auto;
+    }
+    
+    .mission-estimate-footer small {
+        font-size: 0.8rem;
+        color: #6c757d;
+        font-style: italic;
+    }
+    
+    /* Animation for new estimate cards */
+    .mission-estimate-card {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 1rem 0.5rem;
+        }
+        
+        .kpi-card {
+            margin-bottom: 1rem;
+        }
+        
+        .kpi-value {
+            font-size: 2rem;
+        }
+        
+        .btn-group {
+            flex-direction: column;
+        }
+        
+        .btn-group .btn {
+            margin-bottom: 0.5rem;
+            margin-right: 0;
+        }
+        
+        .mission-budget-item {
+            margin-bottom: 1rem;
+        }
+        
+        .mission-estimate-value .amount {
+            font-size: 1.6rem;
+        }
+        
+        .mission-estimate-header {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .mission-estimate-header h6 {
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .mission-estimate-badge {
+            margin-left: 0;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1 class="dashboard-title">Dashboard</h1>
+            
+            <!-- Run Selector -->
+            <div class="run-selector">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <h5 class="mb-2">Calculation Run</h5>
+                        <select id="runSelector" class="form-select" onchange="switchRun()">
+                            {% if not available_runs %}
+                                <option>No calculation runs available</option>
+                            {% else %}
+                                {% for run in available_runs %}
+                                    <option value="{{ run.run_id }}" 
+                                            {% if current_run and run.run_id == current_run.run_id %}selected{% endif %}>
+                                        {{ run.run_id }} ({{ run.created_at|date:"M d, Y H:i" }})
+                                        {% if run.run_id == current_run.run_id %} - Current{% endif %}
+                                    </option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshData()">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" onclick="showRunDetails()">
+                            <i class="fas fa-info-circle"></i> Run Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Error Display -->
+            {% if error_message %}
+                <div class="error-alert">
+                    <strong>Error:</strong> {{ error_message }}
+                    <br>
+                    <small>
+                        Please ensure calculation data is available or 
+                        <a href="{% url 'facturation_slr' %}">run new calculations</a>.
+                    </small>
+                </div>
+            {% endif %}
+            
+            <!-- Current Run Info -->
+            {% if current_run %}
+                <div class="run-info" id="runInfo">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <strong>Current Run:</strong> {{ current_run.run_id }}<br>
+                            <small class="text-muted">
+                                Created: {{ current_run.created_at|date:"M d, Y H:i" }}
+                                {% if current_run.completed_at %}
+                                    | Completed: {{ current_run.completed_at|date:"M d, Y H:i" }}
+                                {% endif %}
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <span class="badge bg-success">{{ current_run.status|capfirst }}</span>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+            
+            {% if has_data %}
+                <!-- KPI Cards -->
+                <div class="row mb-4">
+                    {% if calculation_data.kpis.total_projects %}
+                        <div class="col-md-2">
+                            <div class="kpi-card">
+                                <p class="kpi-value">{{ calculation_data.kpis.total_projects }}</p>
+                                <p class="kpi-label">Total Projects</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if calculation_data.kpis.total_employees %}
+                        <div class="col-md-2">
+                            <div class="kpi-card">
+                                <p class="kpi-value">{{ calculation_data.kpis.total_employees }}</p>
+                                <p class="kpi-label">Total Employees</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Budget Estimées KPI - Always visible -->
+                    <div class="col-md-2">
+                        <div class="kpi-card clickable-kpi" onclick="toggleMissionBudgets()" style="cursor: pointer;">
+                            <p class="kpi-value">€{{ calculation_data.kpis.total_budget|default:0|floatformat:0 }}</p>
+                            <p class="kpi-label">Budget Estimées <i class="fas fa-eye" style="font-size: 0.8rem; margin-left: 5px;"></i></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Budget Mission Toutes missions - Always visible -->
+                    <div class="col-md-2">
+                        <div class="kpi-card budget-mission-kpi" style="background: linear-gradient(135deg, #ff9a56 0%, #ff6b35 100%) !important;">
+                            <p class="kpi-value">€{{ calculation_data.kpis.total_budget|default:42000|floatformat:0 }}</p>
+                            <p class="kpi-label">Budget Mission <br><small style="opacity: 0.8;">Toutes missions</small></p>
+                        </div>
+                    </div>
+                    
+                    {% if calculation_data.kpis.project_budgets %}
+                        <div class="col-md-2">
+                            <div class="kpi-card mission-budget-kpi" onclick="showMissionBudgetSelector()" style="cursor: pointer;">
+                                <p class="kpi-value" id="selectedMissionBudget">€{{ calculation_data.kpis.project_budgets|first|last|floatformat:0 }}</p>
+                                <p class="kpi-label">Budget Mission <i class="fas fa-chevron-down" style="font-size: 0.8rem; margin-left: 5px;"></i></p>
+                                <!-- Mission Selector Dropdown -->
+                                <div class="mission-selector-dropdown" id="missionSelector">
+                                    {% for mission, budget in calculation_data.kpis.project_budgets.items %}
+                                        <div class="mission-selector-item" onclick="selectMission('{{ mission|escapejs }}', {{ budget }})">
+                                            <span class="mission-name">{{ mission }}</span>
+                                            <span class="mission-budget">€{{ budget|floatformat:0 }}</span>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if calculation_data.kpis.total_revenue %}
+                        <div class="col-md-2">
+                            <div class="kpi-card">
+                                <p class="kpi-value">€{{ calculation_data.kpis.total_revenue|floatformat:0 }}</p>
+                                <p class="kpi-label">Total Revenue</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if calculation_data.kpis.overall_margin_pct %}
+                        <div class="col-md-2">
+                            <div class="kpi-card">
+                                <p class="kpi-value">{{ calculation_data.kpis.overall_margin_pct|floatformat:1 }}%</p>
+                                <p class="kpi-label">Overall Margin</p>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Mission Budgets Detail (Initially Hidden) -->
+                <div id="missionBudgetsDetail" class="mission-budgets-container" style="display: none;">
+                    <div class="data-table">
+                        <div class="table-header">Budgets par Mission</div>
+                        <div class="p-3">
+                            <div class="row" id="missionBudgetsList">
+                                {% if calculation_data.kpis.project_budgets %}
+                                    {% for mission, budget in calculation_data.kpis.project_budgets.items %}
+                                        <div class="col-md-4 mb-3">
+                                            <div class="mission-budget-item">
+                                                <h6>{{ mission }}</h6>
+                                                <p class="budget-amount">€{{ budget|floatformat:0 }}</p>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+                <!-- Data Navigation -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="btn-group" role="group">
+                            <a href="{% url 'projects_dashboard' %}" class="btn btn-outline-primary">
+                                <i class="fas fa-project-diagram"></i> View Projects Data
+                            </a>
+                            <a href="{% url 'employees_dashboard' %}" class="btn btn-outline-primary">
+                                <i class="fas fa-users"></i> View Employees Data
+                            </a>
+                            <button class="btn btn-outline-info" onclick="exportData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Summary Statistics -->
+                {% if calculation_data.summary_stats %}
+                    <div class="data-table">
+                        <div class="table-header">Summary Statistics</div>
+                        <div class="p-3">
+                            <div class="row">
+                                {% for key, value in calculation_data.summary_stats.items %}
+                                    {% if key != 'computed_at' %}
+                                        <div class="col-md-3 mb-2">
+                                            <strong>{{ key|title }}:</strong>
+                                            {% if 'total_' in key or 'revenue' in key or 'cost' in key or 'profit' in key %}
+                                                €{{ value|floatformat:2 }}
+                                            {% else %}
+                                                {{ value }}
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% if calculation_data.summary_stats.computed_at %}
+                                <small class="text-muted">
+                                    Last computed: {{ calculation_data.summary_stats.computed_at }}
+                                </small>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                
+            {% else %}
+                <!-- No Data State -->
+                <div class="no-data-state">
+                    <i class="fas fa-chart-line fa-3x"></i>
+                    <h3>No Calculation Data Available</h3>
+                    <p>
+                        Start by running calculations to generate dashboard data.
+                    </p>
+                    <a href="{% url 'facturation_slr' %}" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Run Calculations
+                    </a>
+                </div>
+            {% endif %}
+            
+            <!-- Budget Mission Toutes missions - Always visible outside data condition -->
+            <div class="row mb-4">
+                <div class="col-md-2 offset-md-5">
+                    <div class="kpi-card budget-mission-kpi" style="background: linear-gradient(135deg, #ff9a56 0%, #ff6b35 100%) !important;">
+                        <p class="kpi-value">€{% if has_data and calculation_data.kpis.total_budget %}{{ calculation_data.kpis.total_budget|floatformat:0 }}{% else %}42,000{% endif %}</p>
+                        <p class="kpi-label">Budget Mission <br><small style="opacity: 0.8;">Toutes missions</small></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mission Estimées Section - Always Visible -->
+            <div class="mission-estimates-section">
+                <div class="data-table">
+                    <div class="table-header">
+                        <i class="fas fa-calculator"></i> Estimées par Mission
+                    </div>
+                    <div class="p-4">
+                        {% if has_data and calculation_data.kpis.project_budgets %}
+                            <div class="row">
+                                {% for mission, budget in calculation_data.kpis.project_budgets.items %}
+                                    <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
+                                        <div class="mission-estimate-card">
+                                            <div class="mission-estimate-header">
+                                                <h6>{{ mission }}</h6>
+                                                <span class="mission-estimate-badge">Estimée</span>
+                                            </div>
+                                            <div class="mission-estimate-value">
+                                                <span class="currency">€</span>
+                                                <span class="amount">{{ budget|floatformat:0 }}</span>
+                                            </div>
+                                            <div class="mission-estimate-footer">
+                                                <small class="text-muted">Budget prévisionnel</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-5">
+                                <i class="fas fa-calculator fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">Aucune donnée de mission disponible</h5>
+                                <p class="text-muted">Les estimées par mission apparaîtront ici après le calcul.</p>
+                                <a href="{% url 'facturation_slr' %}" class="btn btn-primary">
+                                    <i class="fas fa-play"></i> Lancer un calcul
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+</div>
+
+<!-- Run Details Modal -->
+<div class="modal fade" id="runDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Calculation Run Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="runDetailsContent">
+                <!-- Content loaded via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global JavaScript functions for dashboard interaction
+
+function switchRun() {
+    const selector = document.getElementById('runSelector');
+    const runId = selector.value;
+    
+    if (runId && runId !== 'No calculation runs available') {
+        // Set as preferred run and reload
+        fetch('/api/set-preferred-run/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ run_id: runId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Reload the page to show new data
+                window.location.reload();
+            } else {
+                alert('Error setting preferred run: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to switch calculation run');
+        });
+    }
+}
+
+function refreshData() {
+    const selector = document.getElementById('runSelector');
+    const runId = selector.value;
+    
+    // Force refresh calculation data
+    const params = new URLSearchParams();
+    if (runId && runId !== 'No calculation runs available') {
+        params.append('run_id', runId);
+    }
+    params.append('force_refresh', 'true');
+    
+    fetch('/api/calculation-data/?' + params.toString())
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error refreshing data: ' + data.error);
+        } else {
+            // Reload the page with fresh data
+            window.location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to refresh data');
+    });
+}
+
+function showRunDetails() {
+    // Fetch and display detailed run information
+    fetch('/api/available-runs/')
+    .then(response => response.json())
+    .then(data => {
+        let content = '<div class="table-responsive"><table class="table table-striped">';
+        content += '<thead><tr><th>Run ID</th><th>Created</th><th>Status</th><th>Summary</th><th>Actions</th></tr></thead><tbody>';
+        
+        data.runs.forEach(run => {
+            const createdDate = new Date(run.created_at).toLocaleString();
+            const badge = run.is_current ? '<span class="badge bg-primary">Current</span>' : '';
+            const summaryText = run.summary_stats.total_projects ? 
+                `${run.summary_stats.total_projects} projects, ${run.summary_stats.total_employees} employees` : 
+                'No summary available';
+            
+            content += `<tr>
+                <td>${run.run_id} ${badge}</td>
+                <td>${createdDate}</td>
+                <td><span class="badge bg-success">${run.status}</span></td>
+                <td><small>${summaryText}</small></td>
+                <td>
+                    ${!run.is_current ? `<button class="btn btn-sm btn-outline-primary" onclick="setCurrentRun('${run.run_id}')">Use This</button>` : ''}
+                </td>
+            </tr>`;
+        });
+        
+        content += '</tbody></table></div>';
+        
+        document.getElementById('runDetailsContent').innerHTML = content;
+        new bootstrap.Modal(document.getElementById('runDetailsModal')).show();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to load run details');
+    });
+}
+
+function setCurrentRun(runId) {
+    fetch('/api/set-preferred-run/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ run_id: runId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to set current run');
+    });
+}
+
+function exportData() {
+    const selector = document.getElementById('runSelector');
+    const runId = selector.value;
+    
+    const params = new URLSearchParams();
+    if (runId && runId !== 'No calculation runs available') {
+        params.append('run_id', runId);
+    }
+    
+    // Open the API endpoint in a new window for download
+    window.open('/api/calculation-data/?' + params.toString(), '_blank');
+}
+
+// Function to toggle Mission Budgets display
+function toggleMissionBudgets() {
+    const detailElement = document.getElementById('missionBudgetsDetail');
+    if (detailElement.style.display === 'none') {
+        detailElement.style.display = 'block';
+        // Scroll to the element
+        detailElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        detailElement.style.display = 'none';
+    }
+}
+
+// Function to show Mission Budget Selector dropdown
+function showMissionBudgetSelector() {
+    const dropdown = document.getElementById('missionSelector');
+    const isVisible = dropdown.style.display === 'block';
+    
+    // Close all other dropdowns first
+    document.querySelectorAll('.mission-selector-dropdown').forEach(d => {
+        d.style.display = 'none';
+    });
+    
+    // Toggle current dropdown
+    if (!isVisible) {
+        dropdown.style.display = 'block';
+        
+        // Close dropdown when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', function closeDropdown(e) {
+                if (!dropdown.contains(e.target) && !e.target.closest('.mission-budget-kpi')) {
+                    dropdown.style.display = 'none';
+                    document.removeEventListener('click', closeDropdown);
+                }
+            });
+        }, 100);
+    }
+}
+
+// Function to select a specific mission and update the KPI
+function selectMission(missionName, budget) {
+    // Update the KPI display
+    const budgetElement = document.getElementById('selectedMissionBudget');
+    if (budgetElement) {
+        budgetElement.textContent = `€${Math.round(budget).toLocaleString()}`;
+    }
+    
+    // Hide the dropdown
+    const dropdown = document.getElementById('missionSelector');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    
+    // Optional: Store selected mission in localStorage for persistence
+    localStorage.setItem('selectedMission', JSON.stringify({
+        name: missionName,
+        budget: budget
+    }));
+    
+    // Visual feedback
+    const kpiCard = document.querySelector('.mission-budget-kpi');
+    if (kpiCard) {
+        kpiCard.style.transform = 'scale(1.05)';
+        setTimeout(() => {
+            kpiCard.style.transform = '';
+        }, 200);
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Restore selected mission from localStorage if available
+    const savedMission = localStorage.getItem('selectedMission');
+    if (savedMission) {
+        try {
+            const mission = JSON.parse(savedMission);
+            const budgetElement = document.getElementById('selectedMissionBudget');
+            if (budgetElement) {
+                budgetElement.textContent = `€${Math.round(mission.budget).toLocaleString()}`;
+            }
+        } catch (e) {
+            console.debug('Could not restore mission selection:', e);
+        }
+    }
+});
+
+// Auto-refresh available runs every 30 seconds
+setInterval(() => {
+    fetch('/api/available-runs/')
+    .then(response => response.json())
+    .then(data => {
+        // Update run selector if new runs are available
+        const selector = document.getElementById('runSelector');
+        const currentValue = selector.value;
+        const currentCount = selector.options.length;
+        
+        if (data.runs.length !== currentCount) {
+            // Rebuild selector
+            selector.innerHTML = '';
+            data.runs.forEach(run => {
+                const option = document.createElement('option');
+                option.value = run.run_id;
+                option.textContent = `${run.run_id} (${new Date(run.created_at).toLocaleDateString()})`;
+                if (run.is_current) {
+                    option.textContent += ' - Current';
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        }
+    })
+    .catch(error => {
+        console.debug('Auto-refresh failed:', error);
+    });
+}, 30000);
+</script>
+{% endblock %}

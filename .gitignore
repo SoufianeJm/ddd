@@ -1,0 +1,56 @@
+# Large executable files
+*.exe
+!build-desktop-app.ps1
+
+# Node modules (can be regenerated)
+electron-app/node_modules/
+
+# Electron build artifacts
+electron-app/dist/win-unpacked/
+electron-app/dist/*.exe
+electron-app/dist/*.blockmap
+
+# Archive files
+*.rar
+*.zip
+# But allow the compressed dist folder
+!electron-app/dist.rar
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Backup files
+*_backup_*/
+complete_cleanup_backup_*/
+
+# Logs
+*.log
+*.txt

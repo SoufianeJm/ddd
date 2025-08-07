@@ -10,12 +10,6 @@ electron-app/dist/win-unpacked/
 electron-app/dist/*.exe
 electron-app/dist/*.blockmap
 
-# Archive files
-*.rar
-*.zip
-# But allow the compressed dist folder
-!electron-app/dist.rar
-
 # Python cache
 __pycache__/
 *.pyc
